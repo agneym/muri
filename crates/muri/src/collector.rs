@@ -39,11 +39,7 @@ impl Collector {
             .filter_map(|p| Pattern::new(&p).ok())
             .collect();
 
-        Self {
-            cwd: cwd.to_path_buf(),
-            ignore_patterns: patterns,
-            include_node_modules,
-        }
+        Self { cwd: cwd.to_path_buf(), ignore_patterns: patterns, include_node_modules }
     }
 
     fn should_ignore(&self, path: &Path) -> bool {
@@ -89,10 +85,7 @@ impl Collector {
     pub fn collect_files(&self, patterns: &[String]) -> HashSet<PathBuf> {
         let mut files = HashSet::new();
 
-        let walker = WalkBuilder::new(&self.cwd)
-            .hidden(false)
-            .git_ignore(true)
-            .build();
+        let walker = WalkBuilder::new(&self.cwd).hidden(false).git_ignore(true).build();
 
         for entry in walker.flatten() {
             let path = entry.path();

@@ -39,10 +39,7 @@ pub fn extract_imports(path: &Path) -> Result<Vec<ImportInfo>, ParseError> {
     let parsed = Parser::new(&allocator, &source, source_type).parse();
 
     if parsed.panicked {
-        return Err(ParseError::ParseFailed(format!(
-            "Parser panicked on {}",
-            path.display()
-        )));
+        return Err(ParseError::ParseFailed(format!("Parser panicked on {}", path.display())));
     }
 
     let mut imports = Vec::new();
@@ -66,10 +63,7 @@ fn extract_from_statement(stmt: &Statement, imports: &mut Vec<ImportInfo>) {
             } else {
                 ImportKind::Static
             };
-            imports.push(ImportInfo {
-                source: decl.source.value.to_string(),
-                kind,
-            });
+            imports.push(ImportInfo { source: decl.source.value.to_string(), kind });
         }
         Statement::ExportNamedDeclaration(decl) => {
             // Skip type-only exports - they don't establish runtime dependencies
@@ -182,10 +176,8 @@ fn extract_from_expression(expr: &Expression, imports: &mut Vec<ImportInfo>) {
     match expr {
         Expression::ImportExpression(import_expr) => {
             if let Expression::StringLiteral(lit) = &import_expr.source {
-                imports.push(ImportInfo {
-                    source: lit.value.to_string(),
-                    kind: ImportKind::Dynamic,
-                });
+                imports
+                    .push(ImportInfo { source: lit.value.to_string(), kind: ImportKind::Dynamic });
             }
         }
         Expression::CallExpression(call) => {

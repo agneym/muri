@@ -11,11 +11,7 @@ pub struct Report {
 impl Report {
     pub fn new(unused_files: Vec<PathBuf>, total_files: usize) -> Self {
         let unused_count = unused_files.len();
-        Self {
-            unused_files,
-            total_files,
-            unused_count,
-        }
+        Self { unused_files, total_files, unused_count }
     }
 }
 
@@ -30,10 +26,7 @@ pub fn report_text(report: &Report, cwd: &Path) {
         let relative = file.strip_prefix(cwd).unwrap_or(file);
         println!("  {}", relative.display());
     }
-    println!(
-        "\n{}/{} files unused",
-        report.unused_count, report.total_files
-    );
+    println!("\n{}/{} files unused", report.unused_count, report.total_files);
 }
 
 pub fn report_json(report: &Report) {

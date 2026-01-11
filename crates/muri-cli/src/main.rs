@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use muri::cli::{Cli, OutputFormat};
 use muri::reporter::{report_json, report_text};
-use muri::{find_unused_files, FileConfig, MuriConfig, MuriError};
+use muri::{FileConfig, MuriConfig, MuriError, find_unused_files};
 
 /// Find default config file in directory
 fn find_default_config(dir: &Path) -> Option<PathBuf> {
@@ -46,11 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(path) => match load_config_file(&path) {
                 Ok(cfg) => Some(cfg),
                 Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to parse config file '{}': {}",
-                        path.display(),
-                        e
-                    );
+                    eprintln!("Warning: Failed to parse config file '{}': {}", path.display(), e);
                     None
                 }
             },
@@ -76,11 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let project = if !cli.project.is_empty() {
         cli.project
     } else if let Some(ref cfg) = file_config {
-        if !cfg.project.is_empty() {
-            cfg.project.clone()
-        } else {
-            default_project
-        }
+        if !cfg.project.is_empty() { cfg.project.clone() } else { default_project }
     } else {
         default_project
     };

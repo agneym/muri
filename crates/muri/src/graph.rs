@@ -13,10 +13,7 @@ pub struct DependencyGraph {
 
 impl DependencyGraph {
     pub fn new(project_files: HashSet<PathBuf>, resolver: Arc<ModuleResolver>) -> Self {
-        Self {
-            project_files,
-            resolver,
-        }
+        Self { project_files, resolver }
     }
 
     pub fn find_reachable(&self, entry_points: &[PathBuf]) -> HashSet<PathBuf> {
@@ -41,7 +38,8 @@ impl DependencyGraph {
                 if let Ok(imports) = extract_imports(file) {
                     for import in imports {
                         if let Some(resolved) = self.resolver.resolve(file, &import.source) {
-                            if self.project_files.contains(&resolved) && !reachable.contains(&resolved)
+                            if self.project_files.contains(&resolved)
+                                && !reachable.contains(&resolved)
                             {
                                 queue.insert(resolved);
                             }
@@ -57,11 +55,7 @@ impl DependencyGraph {
     pub fn find_unused(&self, entry_points: &[PathBuf]) -> Vec<PathBuf> {
         let reachable = self.find_reachable(entry_points);
 
-        let mut unused: Vec<_> = self
-            .project_files
-            .difference(&reachable)
-            .cloned()
-            .collect();
+        let mut unused: Vec<_> = self.project_files.difference(&reachable).cloned().collect();
 
         unused.sort();
         unused

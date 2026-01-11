@@ -1,7 +1,7 @@
+use muri::{MuriConfig, find_reachable_files, find_unused_files};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::path::PathBuf;
-use muri::{find_unused_files, find_reachable_files, MuriConfig};
 
 /// Options for finding unused files
 #[napi(object)]
@@ -65,19 +65,13 @@ pub async fn find_unused(options: UnusedFilesOptions) -> Result<UnusedFilesRepor
         .map_err(|e| Error::from_reason(e.to_string()))?;
 
     // Convert PathBuf to relative string paths
-    let cwd_canonical = cwd
-        .canonicalize()
-        .map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
+    let cwd_canonical =
+        cwd.canonicalize().map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
 
     let unused_files: Vec<String> = result
         .unused_files
         .iter()
-        .map(|p| {
-            p.strip_prefix(&cwd_canonical)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .to_string()
-        })
+        .map(|p| p.strip_prefix(&cwd_canonical).unwrap_or(p).to_string_lossy().to_string())
         .collect();
 
     Ok(UnusedFilesReport {
@@ -96,22 +90,15 @@ pub fn find_unused_sync(options: UnusedFilesOptions) -> Result<UnusedFilesReport
     let config: MuriConfig = options.into();
     let cwd = config.cwd.clone();
 
-    let result =
-        find_unused_files(config).map_err(|e| Error::from_reason(e.to_string()))?;
+    let result = find_unused_files(config).map_err(|e| Error::from_reason(e.to_string()))?;
 
-    let cwd_canonical = cwd
-        .canonicalize()
-        .map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
+    let cwd_canonical =
+        cwd.canonicalize().map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
 
     let unused_files: Vec<String> = result
         .unused_files
         .iter()
-        .map(|p| {
-            p.strip_prefix(&cwd_canonical)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .to_string()
-        })
+        .map(|p| p.strip_prefix(&cwd_canonical).unwrap_or(p).to_string_lossy().to_string())
         .collect();
 
     Ok(UnusedFilesReport {
@@ -135,17 +122,11 @@ pub async fn find_reachable(options: UnusedFilesOptions) -> Result<Vec<String>> 
         .map_err(|e| Error::from_reason(format!("Task panicked: {e}")))?
         .map_err(|e| Error::from_reason(e.to_string()))?;
 
-    let cwd_canonical = cwd
-        .canonicalize()
-        .map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
+    let cwd_canonical =
+        cwd.canonicalize().map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
 
     Ok(result
         .iter()
-        .map(|p| {
-            p.strip_prefix(&cwd_canonical)
-                .unwrap_or(p)
-                .to_string_lossy()
-                .to_string()
-        })
+        .map(|p| p.strip_prefix(&cwd_canonical).unwrap_or(p).to_string_lossy().to_string())
         .collect())
 }

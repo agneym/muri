@@ -34,10 +34,7 @@ impl ModuleResolver {
             ],
             extension_alias: vec![
                 (".js".into(), vec![".js".into(), ".ts".into(), ".tsx".into()]),
-                (
-                    ".jsx".into(),
-                    vec![".jsx".into(), ".tsx".into()],
-                ),
+                (".jsx".into(), vec![".jsx".into(), ".tsx".into()]),
                 (".mjs".into(), vec![".mjs".into(), ".mts".into()]),
                 (".cjs".into(), vec![".cjs".into(), ".cts".into()]),
             ],
@@ -51,9 +48,7 @@ impl ModuleResolver {
             ..Default::default()
         };
 
-        Self {
-            resolver: Resolver::new(options),
-        }
+        Self { resolver: Resolver::new(options) }
     }
 
     pub fn resolve(&self, from: &Path, specifier: &str) -> Option<PathBuf> {

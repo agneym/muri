@@ -62,9 +62,7 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
 ///
 /// Returns the set of files that are directly or transitively imported
 /// from the specified entry points.
-pub fn find_reachable_files(
-    config: MuriConfig,
-) -> Result<Vec<std::path::PathBuf>, MuriError> {
+pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf>, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
     let collector = Collector::new(&cwd, &config.ignore, config.include_node_modules);
