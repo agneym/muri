@@ -1,5 +1,5 @@
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Argument, Expression, ImportOrExportKind, Statement};
+use oxc_ast::ast::{Argument, Expression, Statement};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use std::path::Path;
@@ -54,10 +54,8 @@ pub fn extract_imports(path: &Path) -> Result<Vec<ImportInfo>, ParseError> {
 fn extract_from_statement(stmt: &Statement, imports: &mut Vec<ImportInfo>) {
     match stmt {
         Statement::ImportDeclaration(decl) => {
-            // Skip type-only imports - they don't establish runtime dependencies
-            if decl.import_kind == ImportOrExportKind::Type {
-                return;
-            }
+            // Type-only imports still establish a dependency for unused file detection
+            // (the file cannot be deleted even if only imported for types)
             let kind = if decl.specifiers.as_ref().is_some_and(|s| s.is_empty()) {
                 ImportKind::SideEffect
             } else {
@@ -66,10 +64,7 @@ fn extract_from_statement(stmt: &Statement, imports: &mut Vec<ImportInfo>) {
             imports.push(ImportInfo { source: decl.source.value.to_string(), kind });
         }
         Statement::ExportNamedDeclaration(decl) => {
-            // Skip type-only exports - they don't establish runtime dependencies
-            if decl.export_kind == ImportOrExportKind::Type {
-                return;
-            }
+            // Type-only exports still establish a dependency for unused file detection
             if let Some(source) = &decl.source {
                 imports.push(ImportInfo {
                     source: source.value.to_string(),
@@ -78,10 +73,7 @@ fn extract_from_statement(stmt: &Statement, imports: &mut Vec<ImportInfo>) {
             }
         }
         Statement::ExportAllDeclaration(decl) => {
-            // Skip type-only exports - they don't establish runtime dependencies
-            if decl.export_kind == ImportOrExportKind::Type {
-                return;
-            }
+            // Type-only exports still establish a dependency for unused file detection
             imports.push(ImportInfo {
                 source: decl.source.value.to_string(),
                 kind: ImportKind::ExportStar,
