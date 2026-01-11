@@ -9,10 +9,12 @@
     "build:debug": "napi build --platform --manifest-path crates/muri-napi/Cargo.toml --js npm/muri/native.js --dts npm/muri/native.d.ts",
     "prepublishOnly": "napi prepublish -t npm/muri",
     "test": "node tests/node-api.test.js",
-    "universal": "napi universal -t npm/muri"
+    "universal": "napi universal -t npm/muri",
+    "prepare": "lefthook install"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.0"
+    "@napi-rs/cli": "^2.18.0",
+    "lefthook": "^2.0.13"
   },
   "napi": {
     "name": "muri",
