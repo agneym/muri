@@ -1,0 +1,18 @@
+[package]
+name = "unused-files-napi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NAPI bindings for unused-files"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+unused-files = { path = "../unused-files" }
+napi.workspace = true
+napi-derive.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+napi-build = "2"

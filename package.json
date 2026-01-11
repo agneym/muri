@@ -1,0 +1,28 @@
+{
+  "name": "unused-files-dev",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Development workspace for unused-files",
+  "scripts": {
+    "build": "napi build --platform --release --manifest-path crates/unused-files-napi/Cargo.toml --js npm/unused-files/native.js --dts npm/unused-files/native.d.ts",
+    "build:debug": "napi build --platform --manifest-path crates/unused-files-napi/Cargo.toml --js npm/unused-files/native.js --dts npm/unused-files/native.d.ts",
+    "prepublishOnly": "napi prepublish -t npm/unused-files",
+    "test": "node test/test.js",
+    "universal": "napi universal -t npm/unused-files"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "napi": {
+    "name": "unused-files",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "x86_64-unknown-linux-musl"
+      ]
+    }
+  }
+}

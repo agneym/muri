@@ -1,16 +1,24 @@
 # unused-files
 
-A fast CLI tool to detect unused files in JavaScript/TypeScript projects.
+A fast tool to detect unused files in JavaScript/TypeScript projects.
 
 Built with [oxc](https://oxc.rs/) for fast parsing and parallel processing with [rayon](https://github.com/rayon-rs/rayon).
 
 ## Installation
 
+### npm
+
+```bash
+npm install unused-files
+```
+
+### Cargo
+
 ```bash
 cargo install --path .
 ```
 
-## Usage
+## CLI Usage
 
 ```bash
 unused-files --entry src/index.ts
@@ -61,6 +69,62 @@ unused-files --entry "src/index.ts" --format json
 
 - `0` - No unused files found
 - `1` - Unused files detected or error occurred
+
+## Node.js API
+
+### findUnused
+
+Find unused files in a project (async).
+
+```js
+const { findUnused } = require('unused-files');
+
+const report = await findUnused({
+  entry: 'src/index.ts',
+  ignore: ['**/*.test.ts'],
+});
+
+console.log(`Found ${report.unusedCount} unused files out of ${report.totalFiles}`);
+report.unusedFiles.forEach(file => console.log(`  ${file}`));
+```
+
+### findUnusedSync
+
+Synchronous version of `findUnused`.
+
+```js
+const { findUnusedSync } = require('unused-files');
+
+const report = findUnusedSync({
+  entry: ['src/index.ts', 'src/worker.ts'],
+  project: 'src/**/*.ts',
+  cwd: '/path/to/project',
+});
+```
+
+### findReachable
+
+Find all files reachable from entry points (async).
+
+```js
+const { findReachable } = require('unused-files');
+
+const files = await findReachable({
+  entry: 'src/index.ts',
+});
+
+console.log(`${files.length} files are reachable from entry points`);
+```
+
+### Options
+
+| Option | Type | Description | Default |
+|--------|------|-------------|---------|
+| `entry` | `string \| string[]` | Entry point files or glob patterns | (required) |
+| `project` | `string \| string[]` | Project files to check | `**/*.{ts,tsx,js,jsx,mjs,cjs}` |
+| `cwd` | `string` | Working directory | `process.cwd()` |
+| `ignore` | `string[]` | Patterns to ignore | `[]` |
+| `includeNodeModules` | `boolean` | Include files from node_modules | `false` |
 
 ## How It Works
 

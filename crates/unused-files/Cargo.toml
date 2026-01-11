@@ -1,0 +1,25 @@
+[package]
+name = "unused-files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fast library to detect unused files in JavaScript/TypeScript projects"
+
+[lib]
+name = "unused_files"
+path = "src/lib.rs"
+
+[dependencies]
+oxc_parser.workspace = true
+oxc_resolver.workspace = true
+oxc_ast.workspace = true
+oxc_span.workspace = true
+oxc_allocator.workspace = true
+glob.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ignore.workspace = true
+dashmap.workspace = true
+thiserror.workspace = true
+clap.workspace = true
