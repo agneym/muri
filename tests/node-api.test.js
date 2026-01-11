@@ -7,7 +7,7 @@
  */
 
 const path = require('path');
-const { findUnused, findUnusedSync, findReachable } = require('../npm/unused-files');
+const { findUnused, findUnusedSync, findReachable } = require('../npm/muri');
 
 const testProjectPath = path.join(__dirname, 'fixtures', 'node-api');
 

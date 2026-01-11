@@ -41,9 +41,6 @@ pub enum MuriError {
 
     #[error("Invalid working directory: {0}")]
     InvalidCwd(#[from] std::io::Error),
-
-    #[error("Entry point not in project files: {0}")]
-    EntryNotInProject(PathBuf),
 }
 
 /// Config file structure for muri.json / muri.jsonc

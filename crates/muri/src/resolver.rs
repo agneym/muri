@@ -10,7 +10,7 @@ impl ModuleResolver {
         let tsconfig_path = cwd.join("tsconfig.json");
         let tsconfig = if tsconfig_path.exists() {
             Some(TsconfigOptions {
-                config_file: tsconfig_path.into(),
+                config_file: tsconfig_path,
                 references: TsconfigReferences::Auto,
             })
         } else {
@@ -23,6 +23,7 @@ impl ModuleResolver {
             extensions: vec![
                 ".ts".into(),
                 ".tsx".into(),
+                ".d.ts".into(),
                 ".js".into(),
                 ".jsx".into(),
                 ".mjs".into(),

@@ -61,13 +61,13 @@ pub async fn find_unused(options: UnusedFilesOptions) -> Result<UnusedFilesRepor
     // Run CPU-bound work in blocking thread pool
     let result = tokio::task::spawn_blocking(move || find_unused_files(config))
         .await
-        .map_err(|e| Error::from_reason(format!("Task panicked: {}", e)))?
+        .map_err(|e| Error::from_reason(format!("Task panicked: {e}")))?
         .map_err(|e| Error::from_reason(e.to_string()))?;
 
     // Convert PathBuf to relative string paths
     let cwd_canonical = cwd
         .canonicalize()
-        .map_err(|e| Error::from_reason(format!("Invalid cwd: {}", e)))?;
+        .map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
 
     let unused_files: Vec<String> = result
         .unused_files
@@ -101,7 +101,7 @@ pub fn find_unused_sync(options: UnusedFilesOptions) -> Result<UnusedFilesReport
 
     let cwd_canonical = cwd
         .canonicalize()
-        .map_err(|e| Error::from_reason(format!("Invalid cwd: {}", e)))?;
+        .map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
 
     let unused_files: Vec<String> = result
         .unused_files
@@ -132,12 +132,12 @@ pub async fn find_reachable(options: UnusedFilesOptions) -> Result<Vec<String>> 
 
     let result = tokio::task::spawn_blocking(move || find_reachable_files(config))
         .await
-        .map_err(|e| Error::from_reason(format!("Task panicked: {}", e)))?
+        .map_err(|e| Error::from_reason(format!("Task panicked: {e}")))?
         .map_err(|e| Error::from_reason(e.to_string()))?;
 
     let cwd_canonical = cwd
         .canonicalize()
-        .map_err(|e| Error::from_reason(format!("Invalid cwd: {}", e)))?;
+        .map_err(|e| Error::from_reason(format!("Invalid cwd: {e}")))?;
 
     Ok(result
         .iter()

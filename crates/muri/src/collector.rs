@@ -22,7 +22,7 @@ fn expand_brace_pattern(pattern: &str) -> Vec<String> {
             return alternatives
                 .split(',')
                 .flat_map(|alt| {
-                    let expanded = format!("{}{}{}", prefix, alt, suffix);
+                    let expanded = format!("{prefix}{alt}{suffix}");
                     expand_brace_pattern(&expanded)
                 })
                 .collect();

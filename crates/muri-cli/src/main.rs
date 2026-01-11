@@ -116,11 +116,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(MuriError::NoEntryFiles(patterns)) => {
-            eprintln!("Error: No entry files found matching patterns: {:?}", patterns);
+            eprintln!("Error: No entry files found matching patterns: {patterns:?}");
             std::process::exit(1);
         }
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             std::process::exit(1);
         }
     }
