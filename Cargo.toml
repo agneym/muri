@@ -6,7 +6,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/user/unused-files"
+repository = "https://github.com/user/muri"
 
 [workspace.dependencies]
 # OXC dependencies

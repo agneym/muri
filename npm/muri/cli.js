@@ -69,10 +69,10 @@ function parseArgs(args) {
 }
 
 function printHelp() {
-  console.log(`unused-files - Find unused files in JS/TS projects
+  console.log(`muri - Find unused files in JS/TS projects
 
 USAGE:
-    unused-files [OPTIONS]
+    muri [OPTIONS]
 
 OPTIONS:
     -e, --entry <PATTERN>      Entry point files or glob patterns (required, can be repeated)
@@ -85,9 +85,9 @@ OPTIONS:
     -V, --version              Print version
 
 EXAMPLES:
-    unused-files --entry src/index.ts
-    unused-files --entry src/main.ts --project "src/**/*.ts" --ignore "**/*.test.ts"
-    unused-files --entry src/index.ts --format json`);
+    muri --entry src/index.ts
+    muri --entry src/main.ts --project "src/**/*.ts" --ignore "**/*.test.ts"
+    muri --entry src/index.ts --format json`);
 }
 
 function main() {

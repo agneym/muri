@@ -1,4 +1,4 @@
-# unused-files
+# muri
 
 A fast tool to detect unused files in JavaScript/TypeScript projects.
 
@@ -9,7 +9,7 @@ Built with [oxc](https://oxc.rs/) for fast parsing and parallel processing with 
 ### npm
 
 ```bash
-npm install unused-files
+npm install muri
 ```
 
 ### Cargo
@@ -21,7 +21,7 @@ cargo install --path .
 ## CLI Usage
 
 ```bash
-unused-files --entry src/index.ts
+muri --entry src/index.ts
 ```
 
 ### Options
@@ -40,19 +40,19 @@ unused-files --entry src/index.ts
 Find unused files in a React project:
 
 ```bash
-unused-files --entry "src/index.tsx"
+muri --entry "src/index.tsx"
 ```
 
 Multiple entry points:
 
 ```bash
-unused-files --entry "src/main.ts" --entry "src/worker.ts"
+muri --entry "src/main.ts" --entry "src/worker.ts"
 ```
 
 With custom project scope and ignoring test files:
 
 ```bash
-unused-files \
+muri \
   --entry "src/index.ts" \
   --project "src/**/*.ts" \
   --ignore "**/*.test.ts" \
@@ -62,7 +62,7 @@ unused-files \
 JSON output for CI/tooling:
 
 ```bash
-unused-files --entry "src/index.ts" --format json
+muri --entry "src/index.ts" --format json
 ```
 
 ## Exit Codes
@@ -77,7 +77,7 @@ unused-files --entry "src/index.ts" --format json
 Find unused files in a project (async).
 
 ```js
-const { findUnused } = require('unused-files');
+const { findUnused } = require('muri');
 
 const report = await findUnused({
   entry: 'src/index.ts',
@@ -93,7 +93,7 @@ report.unusedFiles.forEach(file => console.log(`  ${file}`));
 Synchronous version of `findUnused`.
 
 ```js
-const { findUnusedSync } = require('unused-files');
+const { findUnusedSync } = require('muri');
 
 const report = findUnusedSync({
   entry: ['src/index.ts', 'src/worker.ts'],
@@ -107,7 +107,7 @@ const report = findUnusedSync({
 Find all files reachable from entry points (async).
 
 ```js
-const { findReachable } = require('unused-files');
+const { findReachable } = require('muri');
 
 const files = await findReachable({
   entry: 'src/index.ts',

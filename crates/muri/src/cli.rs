@@ -2,10 +2,10 @@ use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "unused-files")]
+#[command(name = "muri")]
 #[command(about = "Find unused files in JS/TS projects")]
 pub struct Cli {
-    /// Path to config file (unused-files.json or unused-files.jsonc)
+    /// Path to config file (muri.json or muri.jsonc)
     #[arg(long)]
     pub config: Option<PathBuf>,
 

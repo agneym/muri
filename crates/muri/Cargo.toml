@@ -1,12 +1,12 @@
 [package]
-name = "unused-files"
+name = "muri"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Fast library to detect unused files in JavaScript/TypeScript projects"
 
 [lib]
-name = "unused_files"
+name = "muri"
 path = "src/lib.rs"
 
 [dependencies]

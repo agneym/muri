@@ -1,20 +1,20 @@
 {
-  "name": "unused-files-dev",
+  "name": "muri-dev",
   "private": true,
   "version": "0.1.0",
-  "description": "Development workspace for unused-files",
+  "description": "Development workspace for muri",
   "scripts": {
-    "build": "napi build --platform --release --cargo-cwd crates/unused-files-napi --js native.js --dts native.d.ts npm/unused-files",
-    "build:debug": "napi build --platform --manifest-path crates/unused-files-napi/Cargo.toml --js npm/unused-files/native.js --dts npm/unused-files/native.d.ts",
-    "prepublishOnly": "napi prepublish -t npm/unused-files",
+    "build": "napi build --platform --release --cargo-cwd crates/muri-napi --js native.js --dts native.d.ts npm/muri",
+    "build:debug": "napi build --platform --manifest-path crates/muri-napi/Cargo.toml --js npm/muri/native.js --dts npm/muri/native.d.ts",
+    "prepublishOnly": "napi prepublish -t npm/muri",
     "test": "node tests/node-api.test.js",
-    "universal": "napi universal -t npm/unused-files"
+    "universal": "napi universal -t npm/muri"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
   },
   "napi": {
-    "name": "unused-files",
+    "name": "muri",
     "triples": {
       "defaults": true,
       "additional": [

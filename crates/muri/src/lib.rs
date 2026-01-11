@@ -9,7 +9,7 @@ pub mod types;
 use std::sync::Arc;
 
 pub use reporter::Report;
-pub use types::{FileConfig, UnusedFilesConfig, UnusedFilesError};
+pub use types::{FileConfig, MuriConfig, MuriError};
 
 use collector::Collector;
 use graph::DependencyGraph;
@@ -22,14 +22,14 @@ use resolver::ModuleResolver;
 ///
 /// # Returns
 /// * `Ok(Report)` - Report containing unused files and statistics
-/// * `Err(UnusedFilesError)` - Error if entry files not found or invalid cwd
+/// * `Err(MuriError)` - Error if entry files not found or invalid cwd
 ///
 /// # Example
 /// ```no_run
-/// use unused_files::{find_unused_files, UnusedFilesConfig};
+/// use muri::{find_unused_files, MuriConfig};
 /// use std::path::PathBuf;
 ///
-/// let config = UnusedFilesConfig {
+/// let config = MuriConfig {
 ///     entry: vec!["src/index.ts".to_string()],
 ///     cwd: PathBuf::from("."),
 ///     ..Default::default()
@@ -38,7 +38,7 @@ use resolver::ModuleResolver;
 /// let report = find_unused_files(config).unwrap();
 /// println!("Found {} unused files", report.unused_count);
 /// ```
-pub fn find_unused_files(config: UnusedFilesConfig) -> Result<Report, UnusedFilesError> {
+pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
     // Collect files
@@ -47,7 +47,7 @@ pub fn find_unused_files(config: UnusedFilesConfig) -> Result<Report, UnusedFile
     let project_files = collector.collect_project_files(&config.project);
 
     if entry_files.is_empty() {
-        return Err(UnusedFilesError::NoEntryFiles(config.entry));
+        return Err(MuriError::NoEntryFiles(config.entry));
     }
 
     // Build graph and find unused
@@ -63,8 +63,8 @@ pub fn find_unused_files(config: UnusedFilesConfig) -> Result<Report, UnusedFile
 /// Returns the set of files that are directly or transitively imported
 /// from the specified entry points.
 pub fn find_reachable_files(
-    config: UnusedFilesConfig,
-) -> Result<Vec<std::path::PathBuf>, UnusedFilesError> {
+    config: MuriConfig,
+) -> Result<Vec<std::path::PathBuf>, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
     let collector = Collector::new(&cwd, &config.ignore, config.include_node_modules);
@@ -72,7 +72,7 @@ pub fn find_reachable_files(
     let project_files = collector.collect_project_files(&config.project);
 
     if entry_files.is_empty() {
-        return Err(UnusedFilesError::NoEntryFiles(config.entry));
+        return Err(MuriError::NoEntryFiles(config.entry));
     }
 
     let resolver = Arc::new(ModuleResolver::new(&cwd));

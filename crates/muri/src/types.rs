@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Configuration for finding unused files
 #[derive(Debug, Clone)]
-pub struct UnusedFilesConfig {
+pub struct MuriConfig {
     /// Entry point files or glob patterns
     pub entry: Vec<String>,
 
@@ -21,7 +21,7 @@ pub struct UnusedFilesConfig {
     pub include_node_modules: bool,
 }
 
-impl Default for UnusedFilesConfig {
+impl Default for MuriConfig {
     fn default() -> Self {
         Self {
             entry: Vec::new(),
@@ -33,9 +33,9 @@ impl Default for UnusedFilesConfig {
     }
 }
 
-/// Error types for unused-files operations
+/// Error types for muri operations
 #[derive(Error, Debug)]
-pub enum UnusedFilesError {
+pub enum MuriError {
     #[error("No entry files found matching patterns: {0:?}")]
     NoEntryFiles(Vec<String>),
 
@@ -46,7 +46,7 @@ pub enum UnusedFilesError {
     EntryNotInProject(PathBuf),
 }
 
-/// Config file structure for unused-files.json / unused-files.jsonc
+/// Config file structure for muri.json / muri.jsonc
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileConfig {
     #[serde(default)]

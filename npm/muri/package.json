@@ -1,11 +1,11 @@
 {
-  "name": "unused-files",
+  "name": "muri",
   "version": "0.1.0",
   "description": "Fast unused file detection for JavaScript/TypeScript projects",
   "main": "index.js",
   "types": "index.d.ts",
   "bin": {
-    "unused-files": "cli.js"
+    "muri": "cli.js"
   },
   "files": [
     "index.js",
@@ -28,16 +28,16 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/unused-files"
+    "url": "https://github.com/user/muri"
   },
   "engines": {
     "node": ">=20"
   },
   "optionalDependencies": {
-    "unused-files-darwin-x64": "0.1.0",
-    "unused-files-darwin-arm64": "0.1.0",
-    "unused-files-linux-x64-gnu": "0.1.0",
-    "unused-files-linux-arm64-gnu": "0.1.0",
-    "unused-files-win32-x64-msvc": "0.1.0"
+    "muri-darwin-x64": "0.1.0",
+    "muri-darwin-arm64": "0.1.0",
+    "muri-linux-x64-gnu": "0.1.0",
+    "muri-linux-arm64-gnu": "0.1.0",
+    "muri-win32-x64-msvc": "0.1.0"
   }
 }

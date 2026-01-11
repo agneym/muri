@@ -2,18 +2,18 @@ use clap::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use unused_files::cli::{Cli, OutputFormat};
-use unused_files::reporter::{report_json, report_text};
-use unused_files::{find_unused_files, FileConfig, UnusedFilesConfig, UnusedFilesError};
+use muri::cli::{Cli, OutputFormat};
+use muri::reporter::{report_json, report_text};
+use muri::{find_unused_files, FileConfig, MuriConfig, MuriError};
 
 /// Find default config file in directory
 fn find_default_config(dir: &Path) -> Option<PathBuf> {
-    let json_path = dir.join("unused-files.json");
+    let json_path = dir.join("muri.json");
     if json_path.exists() {
         return Some(json_path);
     }
 
-    let jsonc_path = dir.join("unused-files.jsonc");
+    let jsonc_path = dir.join("muri.jsonc");
     if jsonc_path.exists() {
         return Some(jsonc_path);
     }
@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Vec::new()
     };
 
-    let config = UnusedFilesConfig {
+    let config = MuriConfig {
         entry,
         project,
         cwd: cli.cwd.clone(),
@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
         }
-        Err(UnusedFilesError::NoEntryFiles(patterns)) => {
+        Err(MuriError::NoEntryFiles(patterns)) => {
             eprintln!("Error: No entry files found matching patterns: {:?}", patterns);
             std::process::exit(1);
         }

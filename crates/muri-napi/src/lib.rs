@@ -1,7 +1,7 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::path::PathBuf;
-use unused_files::{find_unused_files, find_reachable_files, UnusedFilesConfig};
+use muri::{find_unused_files, find_reachable_files, MuriConfig};
 
 /// Options for finding unused files
 #[napi(object)]
@@ -35,9 +35,9 @@ pub struct UnusedFilesReport {
     pub unused_count: u32,
 }
 
-impl From<UnusedFilesOptions> for UnusedFilesConfig {
+impl From<UnusedFilesOptions> for MuriConfig {
     fn from(opts: UnusedFilesOptions) -> Self {
-        UnusedFilesConfig {
+        MuriConfig {
             entry: opts.entry,
             project: opts
                 .project
@@ -55,7 +55,7 @@ impl From<UnusedFilesOptions> for UnusedFilesConfig {
 /// @returns Promise with report containing unused files and statistics
 #[napi]
 pub async fn find_unused(options: UnusedFilesOptions) -> Result<UnusedFilesReport> {
-    let config: UnusedFilesConfig = options.into();
+    let config: MuriConfig = options.into();
     let cwd = config.cwd.clone();
 
     // Run CPU-bound work in blocking thread pool
@@ -93,7 +93,7 @@ pub async fn find_unused(options: UnusedFilesOptions) -> Result<UnusedFilesRepor
 /// @returns Report containing unused files and statistics
 #[napi]
 pub fn find_unused_sync(options: UnusedFilesOptions) -> Result<UnusedFilesReport> {
-    let config: UnusedFilesConfig = options.into();
+    let config: MuriConfig = options.into();
     let cwd = config.cwd.clone();
 
     let result =
@@ -127,7 +127,7 @@ pub fn find_unused_sync(options: UnusedFilesOptions) -> Result<UnusedFilesReport
 /// @returns Promise with array of reachable file paths
 #[napi]
 pub async fn find_reachable(options: UnusedFilesOptions) -> Result<Vec<String>> {
-    let config: UnusedFilesConfig = options.into();
+    let config: MuriConfig = options.into();
     let cwd = config.cwd.clone();
 
     let result = tokio::task::spawn_blocking(move || find_reachable_files(config))

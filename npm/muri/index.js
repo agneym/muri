@@ -2,11 +2,11 @@ const { platform, arch } = process;
 const path = require('path');
 
 const PLATFORM_PACKAGES = {
-  'darwin-x64': 'unused-files-darwin-x64',
-  'darwin-arm64': 'unused-files-darwin-arm64',
-  'linux-x64': 'unused-files-linux-x64-gnu',
-  'linux-arm64': 'unused-files-linux-arm64-gnu',
-  'win32-x64': 'unused-files-win32-x64-msvc',
+  'darwin-x64': 'muri-darwin-x64',
+  'darwin-arm64': 'muri-darwin-arm64',
+  'linux-x64': 'muri-linux-x64-gnu',
+  'linux-arm64': 'muri-linux-arm64-gnu',
+  'win32-x64': 'muri-win32-x64-msvc',
 };
 
 function getPlatformPackage() {

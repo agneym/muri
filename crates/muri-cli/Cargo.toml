@@ -1,16 +1,16 @@
 [package]
-name = "unused-files-cli"
+name = "muri-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "CLI tool to detect unused files in JavaScript/TypeScript projects"
 
 [[bin]]
-name = "unused-files"
+name = "muri"
 path = "src/main.rs"
 
 [dependencies]
-unused-files = { path = "../unused-files" }
+muri = { path = "../muri" }
 clap.workspace = true
 serde_json.workspace = true
 json-strip-comments.workspace = true

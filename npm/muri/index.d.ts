@@ -51,7 +51,7 @@ export interface UnusedFilesReport {
  *
  * @example
  * ```ts
- * import { findUnused } from '@anthropic/unused-files';
+ * import { findUnused } from 'muri';
  *
  * const report = await findUnused({
  *   entry: ['src/index.ts'],
@@ -71,7 +71,7 @@ export function findUnused(options: UnusedFilesOptions): Promise<UnusedFilesRepo
  *
  * @example
  * ```ts
- * import { findUnusedSync } from '@anthropic/unused-files';
+ * import { findUnusedSync } from 'muri';
  *
  * const report = findUnusedSync({
  *   entry: ['src/index.ts'],
@@ -88,7 +88,7 @@ export function findUnusedSync(options: UnusedFilesOptions): UnusedFilesReport;
  *
  * @example
  * ```ts
- * import { findReachable } from '@anthropic/unused-files';
+ * import { findReachable } from 'muri';
  *
  * const files = await findReachable({
  *   entry: ['src/index.ts'],
