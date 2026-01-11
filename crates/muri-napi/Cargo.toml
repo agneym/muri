@@ -14,5 +14,8 @@ napi.workspace = true
 napi-derive.workspace = true
 tokio.workspace = true
 
+[lints]
+workspace = true
+
 [build-dependencies]
 napi-build = "2"
