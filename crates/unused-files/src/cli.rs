@@ -5,12 +5,16 @@ use std::path::PathBuf;
 #[command(name = "unused-files")]
 #[command(about = "Find unused files in JS/TS projects")]
 pub struct Cli {
+    /// Path to config file (unused-files.json or unused-files.jsonc)
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+
     /// Entry point files or glob patterns
-    #[arg(short, long, required = true)]
+    #[arg(short, long)]
     pub entry: Vec<String>,
 
-    /// Project files to check (glob patterns)
-    #[arg(short, long, default_value = "**/*.{ts,tsx,js,jsx,mjs,cjs}")]
+    /// Project files to check (glob patterns) [default: **/*.{ts,tsx,js,jsx,mjs,cjs}]
+    #[arg(short, long)]
     pub project: Vec<String>,
 
     /// Working directory

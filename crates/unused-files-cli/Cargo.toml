@@ -12,3 +12,5 @@ path = "src/main.rs"
 [dependencies]
 unused-files = { path = "../unused-files" }
 clap.workspace = true
+serde_json.workspace = true
+json-strip-comments.workspace = true

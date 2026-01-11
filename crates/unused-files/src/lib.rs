@@ -9,7 +9,7 @@ pub mod types;
 use std::sync::Arc;
 
 pub use reporter::Report;
-pub use types::{UnusedFilesConfig, UnusedFilesError};
+pub use types::{FileConfig, UnusedFilesConfig, UnusedFilesError};
 
 use collector::Collector;
 use graph::DependencyGraph;

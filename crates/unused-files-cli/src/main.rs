@@ -1,17 +1,103 @@
 use clap::Parser;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use unused_files::cli::{Cli, OutputFormat};
 use unused_files::reporter::{report_json, report_text};
-use unused_files::{find_unused_files, UnusedFilesConfig, UnusedFilesError};
+use unused_files::{find_unused_files, FileConfig, UnusedFilesConfig, UnusedFilesError};
+
+/// Find default config file in directory
+fn find_default_config(dir: &Path) -> Option<PathBuf> {
+    let json_path = dir.join("unused-files.json");
+    if json_path.exists() {
+        return Some(json_path);
+    }
+
+    let jsonc_path = dir.join("unused-files.jsonc");
+    if jsonc_path.exists() {
+        return Some(jsonc_path);
+    }
+
+    None
+}
+
+/// Load config from file path, supporting .json and .jsonc
+fn load_config_file(path: &Path) -> Result<FileConfig, Box<dyn std::error::Error>> {
+    let mut content = fs::read_to_string(path)?;
+    json_strip_comments::strip(&mut content)?;
+    let config: FileConfig = serde_json::from_str(&content)?;
+    Ok(config)
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    // Load config file
+    let file_config = if let Some(config_path) = &cli.config {
+        // Use specified config file (error if not found)
+        if !config_path.exists() {
+            eprintln!("Error: Config file not found: {}", config_path.display());
+            std::process::exit(1);
+        }
+        Some(load_config_file(config_path)?)
+    } else {
+        // Look for default config file in cwd
+        match find_default_config(&cli.cwd) {
+            Some(path) => match load_config_file(&path) {
+                Ok(cfg) => Some(cfg),
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to parse config file '{}': {}",
+                        path.display(),
+                        e
+                    );
+                    None
+                }
+            },
+            None => None,
+        }
+    };
+
+    // Merge config: CLI args override file config
+    let entry = if !cli.entry.is_empty() {
+        cli.entry
+    } else if let Some(ref cfg) = file_config {
+        if cfg.entry.is_empty() {
+            eprintln!("Error: No entry files specified in config or CLI");
+            std::process::exit(1);
+        }
+        cfg.entry.clone()
+    } else {
+        eprintln!("Error: No entry files specified. Use --entry or provide a config file.");
+        std::process::exit(1);
+    };
+
+    let default_project = vec!["**/*.{ts,tsx,js,jsx,mjs,cjs}".to_string()];
+    let project = if !cli.project.is_empty() {
+        cli.project
+    } else if let Some(ref cfg) = file_config {
+        if !cfg.project.is_empty() {
+            cfg.project.clone()
+        } else {
+            default_project
+        }
+    } else {
+        default_project
+    };
+
+    let ignore = if !cli.ignore.is_empty() {
+        cli.ignore
+    } else if let Some(ref cfg) = file_config {
+        cfg.ignore.clone()
+    } else {
+        Vec::new()
+    };
+
     let config = UnusedFilesConfig {
-        entry: cli.entry,
-        project: cli.project,
+        entry,
+        project,
         cwd: cli.cwd.clone(),
-        ignore: cli.ignore,
+        ignore,
         include_node_modules: cli.include_node_modules,
     };
 

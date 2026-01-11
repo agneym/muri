@@ -19,6 +19,7 @@ glob.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+json-strip-comments.workspace = true
 ignore.workspace = true
 dashmap.workspace = true
 thiserror.workspace = true

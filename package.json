@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Development workspace for unused-files",
   "scripts": {
-    "build": "napi build --platform --release --manifest-path crates/unused-files-napi/Cargo.toml --js npm/unused-files/native.js --dts npm/unused-files/native.d.ts",
+    "build": "napi build --platform --release --cargo-cwd crates/unused-files-napi --js native.js --dts native.d.ts npm/unused-files",
     "build:debug": "napi build --platform --manifest-path crates/unused-files-napi/Cargo.toml --js npm/unused-files/native.js --dts npm/unused-files/native.d.ts",
     "prepublishOnly": "napi prepublish -t npm/unused-files",
     "test": "node tests/node-api.test.js",

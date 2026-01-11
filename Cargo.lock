@@ -351,6 +351,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "json-strip-comments"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25376d12b2f6ae53f986f86e2a808a56af03d72284ae24fc35a2e290d09ee3c3"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.180"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -648,7 +657,7 @@ dependencies = [
  "cfg-if",
  "dashmap",
  "indexmap",
- "json-strip-comments",
+ "json-strip-comments 1.0.4",
  "once_cell",
  "rustc-hash",
  "serde",
@@ -1115,6 +1124,7 @@ dependencies = [
  "dashmap",
  "glob",
  "ignore",
+ "json-strip-comments 3.1.0",
  "oxc_allocator",
  "oxc_ast",
  "oxc_parser",
@@ -1131,6 +1141,8 @@ name = "unused-files-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "json-strip-comments 3.1.0",
+ "serde_json",
  "unused-files",
 ]
 

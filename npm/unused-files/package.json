@@ -31,7 +31,7 @@
     "url": "https://github.com/user/unused-files"
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=20"
   },
   "optionalDependencies": {
     "unused-files-darwin-x64": "0.1.0",

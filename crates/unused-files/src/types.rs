@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -43,4 +44,17 @@ pub enum UnusedFilesError {
 
     #[error("Entry point not in project files: {0}")]
     EntryNotInProject(PathBuf),
+}
+
+/// Config file structure for unused-files.json / unused-files.jsonc
+#[derive(Debug, Clone, Deserialize)]
+pub struct FileConfig {
+    #[serde(default)]
+    pub entry: Vec<String>,
+
+    #[serde(default)]
+    pub project: Vec<String>,
+
+    #[serde(default)]
+    pub ignore: Vec<String>,
 }
