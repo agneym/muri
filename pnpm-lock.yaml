@@ -15,6 +15,8 @@ importers:
         specifier: ^2.0.13
         version: 2.0.13
 
+  npm/muri: {}
+
 packages:
 
   '@napi-rs/cli@2.18.4':
