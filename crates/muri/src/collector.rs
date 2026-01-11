@@ -68,7 +68,6 @@ fn compile_globset(patterns: &[String]) -> GlobSet {
 pub struct Collector {
     cwd: PathBuf,
     matchers: CompiledMatchers,
-    include_node_modules: bool,
 }
 
 impl Collector {
@@ -77,12 +76,10 @@ impl Collector {
         entry_patterns: &[String],
         project_patterns: &[String],
         ignore_patterns: &[String],
-        include_node_modules: bool,
     ) -> Self {
         Self {
             cwd: cwd.to_path_buf(),
             matchers: CompiledMatchers::new(entry_patterns, project_patterns, ignore_patterns),
-            include_node_modules,
         }
     }
 
@@ -94,14 +91,11 @@ impl Collector {
         let mut walker_builder = WalkBuilder::new(&self.cwd);
         walker_builder.hidden(false).git_ignore(true);
 
-        // Prune node_modules during traversal (not after visiting)
-        if !self.include_node_modules {
-            let mut overrides = OverrideBuilder::new(&self.cwd);
-            // Use negation pattern to exclude node_modules directories
-            overrides.add("!**/node_modules/").ok();
-            if let Ok(built) = overrides.build() {
-                walker_builder.overrides(built);
-            }
+        // Always exclude node_modules directories during traversal
+        let mut overrides = OverrideBuilder::new(&self.cwd);
+        overrides.add("!**/node_modules/").ok();
+        if let Ok(built) = overrides.build() {
+            walker_builder.overrides(built);
         }
 
         let walker = walker_builder.build();

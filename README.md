@@ -31,9 +31,50 @@ muri --entry src/index.ts
 | `-e, --entry <PATTERN>` | Entry point files or glob patterns (required) | - |
 | `-p, --project <PATTERN>` | Project files to check | `**/*.{ts,tsx,js,jsx,mjs,cjs}` |
 | `-C, --cwd <PATH>` | Working directory | `.` |
+| `-c, --config <PATH>` | Path to config file | - |
 | `--format <FORMAT>` | Output format: `text` or `json` | `text` |
 | `--ignore <PATTERN>` | Patterns to ignore | - |
-| `--include-node-modules` | Include files from node_modules | `false` |
+
+### Configuration File
+
+Muri supports configuration via `muri.json` or `muri.jsonc` files. If no `--config` flag is provided, muri automatically looks for these files in the working directory.
+
+**Supported formats:**
+- JSON (`.json`)
+- JSON with Comments (`.jsonc`)
+
+**Example `muri.json`:**
+
+```json
+{
+  "entry": ["src/index.ts", "src/worker.ts"],
+  "project": ["src/**/*.ts", "src/**/*.tsx"],
+  "ignore": ["**/*.test.ts", "**/*.spec.ts"]
+}
+```
+
+**Example `muri.jsonc` (with comments):**
+
+```jsonc
+{
+  // Entry points for dependency analysis
+  "entry": ["src/index.ts"],
+
+  // Files to check for unused status
+  "project": ["src/**/*.ts", "src/**/*.tsx"],
+
+  // Patterns to exclude
+  "ignore": ["**/*.test.ts", "**/*.spec.ts"]
+}
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `entry` | `string[]` | Entry point files or glob patterns |
+| `project` | `string[]` | Project files to check |
+| `ignore` | `string[]` | Patterns to ignore |
+
+CLI arguments override config file values when both are provided.
 
 ### Examples
 
@@ -124,7 +165,6 @@ console.log(`${files.length} files are reachable from entry points`);
 | `project` | `string \| string[]` | Project files to check | `**/*.{ts,tsx,js,jsx,mjs,cjs}` |
 | `cwd` | `string` | Working directory | `process.cwd()` |
 | `ignore` | `string[]` | Patterns to ignore | `[]` |
-| `includeNodeModules` | `boolean` | Include files from node_modules | `false` |
 
 ## How It Works
 

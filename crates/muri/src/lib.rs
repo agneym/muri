@@ -44,13 +44,7 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
     // Single walk to collect both entry and project files
-    let collector = Collector::new(
-        &cwd,
-        &config.entry,
-        &config.project,
-        &config.ignore,
-        config.include_node_modules,
-    );
+    let collector = Collector::new(&cwd, &config.entry, &config.project, &config.ignore);
     let index = collector.collect();
 
     if index.entry_files.is_empty() {
@@ -74,13 +68,7 @@ pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf
     let cwd = config.cwd.canonicalize()?;
 
     // Single walk to collect both entry and project files
-    let collector = Collector::new(
-        &cwd,
-        &config.entry,
-        &config.project,
-        &config.ignore,
-        config.include_node_modules,
-    );
+    let collector = Collector::new(&cwd, &config.entry, &config.project, &config.ignore);
     let index = collector.collect();
 
     if index.entry_files.is_empty() {

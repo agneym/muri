@@ -17,9 +17,6 @@ pub struct UnusedFilesOptions {
 
     /// Patterns to ignore
     pub ignore: Option<Vec<String>>,
-
-    /// Include files from node_modules (default: false)
-    pub include_node_modules: Option<bool>,
 }
 
 /// Report of unused files analysis
@@ -44,7 +41,6 @@ impl From<UnusedFilesOptions> for MuriConfig {
                 .unwrap_or_else(|| vec!["**/*.{ts,tsx,js,jsx,mjs,cjs}".to_string()]),
             cwd: opts.cwd.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")),
             ignore: opts.ignore.unwrap_or_default(),
-            include_node_modules: opts.include_node_modules.unwrap_or(false),
         }
     }
 }

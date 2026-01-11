@@ -21,12 +21,6 @@ export interface UnusedFilesOptions {
    * Patterns to ignore
    */
   ignore?: string[];
-
-  /**
-   * Include files from node_modules
-   * @default false
-   */
-  includeNodeModules?: boolean;
 }
 
 export interface UnusedFilesReport {

@@ -85,13 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Vec::new()
     };
 
-    let config = MuriConfig {
-        entry,
-        project,
-        cwd: cli.cwd.clone(),
-        ignore,
-        include_node_modules: cli.include_node_modules,
-    };
+    let config = MuriConfig { entry, project, cwd: cli.cwd.clone(), ignore };
 
     let cwd = config.cwd.canonicalize()?;
 

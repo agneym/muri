@@ -13,8 +13,6 @@ export interface UnusedFilesOptions {
   cwd?: string
   /** Patterns to ignore */
   ignore?: Array<string>
-  /** Include files from node_modules (default: false) */
-  includeNodeModules?: boolean
 }
 /** Report of unused files analysis */
 export interface UnusedFilesReport {

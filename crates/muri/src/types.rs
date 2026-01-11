@@ -16,9 +16,6 @@ pub struct MuriConfig {
 
     /// Patterns to ignore
     pub ignore: Vec<String>,
-
-    /// Include files from node_modules
-    pub include_node_modules: bool,
 }
 
 impl Default for MuriConfig {
@@ -28,7 +25,6 @@ impl Default for MuriConfig {
             project: vec!["**/*.{ts,tsx,js,jsx,mjs,cjs}".to_string()],
             cwd: PathBuf::from("."),
             ignore: Vec::new(),
-            include_node_modules: false,
         }
     }
 }

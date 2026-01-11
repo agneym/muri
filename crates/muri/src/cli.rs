@@ -28,10 +28,6 @@ pub struct Cli {
     /// Patterns to ignore
     #[arg(long)]
     pub ignore: Vec<String>,
-
-    /// Include files from node_modules
-    #[arg(long, default_value = "false")]
-    pub include_node_modules: bool,
 }
 
 #[derive(Clone, ValueEnum, Default)]

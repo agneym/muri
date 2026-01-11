@@ -8,7 +8,6 @@ function parseArgs(args) {
     project: [],
     cwd: process.cwd(),
     ignore: [],
-    includeNodeModules: false,
     format: 'text',
   };
 
@@ -45,8 +44,6 @@ function parseArgs(args) {
         requireValue(arg);
       }
       options.ignore.push(args[i]);
-    } else if (arg === '--include-node-modules') {
-      options.includeNodeModules = true;
     } else if (arg === '--format') {
       i++;
       if (i >= args.length || args[i].startsWith('-')) {
@@ -79,7 +76,6 @@ OPTIONS:
     -p, --project <PATTERN>    Project files to check (default: **/*.{ts,tsx,js,jsx,mjs,cjs})
     -C, --cwd <PATH>           Working directory (default: .)
     --ignore <PATTERN>         Patterns to ignore (can be repeated)
-    --include-node-modules     Include files from node_modules
     --format <FORMAT>          Output format: text or json (default: text)
     -h, --help                 Print help
     -V, --version              Print version
@@ -106,7 +102,6 @@ function main() {
       project: options.project.length > 0 ? options.project : undefined,
       cwd: options.cwd,
       ignore: options.ignore,
-      includeNodeModules: options.includeNodeModules,
     });
 
     if (options.format === 'json') {

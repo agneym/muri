@@ -57,7 +57,6 @@ function getNativeModule() {
  * @param {string|string[]} [options.project] - Project files to check (glob patterns)
  * @param {string} [options.cwd] - Working directory (defaults to current directory)
  * @param {string[]} [options.ignore] - Patterns to ignore
- * @param {boolean} [options.includeNodeModules] - Include files from node_modules
  * @returns {Promise<{unusedFiles: string[], totalFiles: number, unusedCount: number}>}
  */
 async function findUnused(options) {
@@ -76,7 +75,6 @@ async function findUnused(options) {
     project,
     cwd: options.cwd,
     ignore: options.ignore,
-    includeNodeModules: options.includeNodeModules,
   });
 }
 
@@ -87,7 +85,6 @@ async function findUnused(options) {
  * @param {string|string[]} [options.project] - Project files to check (glob patterns)
  * @param {string} [options.cwd] - Working directory (defaults to current directory)
  * @param {string[]} [options.ignore] - Patterns to ignore
- * @param {boolean} [options.includeNodeModules] - Include files from node_modules
  * @returns {{unusedFiles: string[], totalFiles: number, unusedCount: number}}
  */
 function findUnusedSync(options) {
@@ -103,7 +100,6 @@ function findUnusedSync(options) {
     project,
     cwd: options.cwd,
     ignore: options.ignore,
-    includeNodeModules: options.includeNodeModules,
   });
 }
 
@@ -114,7 +110,6 @@ function findUnusedSync(options) {
  * @param {string|string[]} [options.project] - Project files to check (glob patterns)
  * @param {string} [options.cwd] - Working directory (defaults to current directory)
  * @param {string[]} [options.ignore] - Patterns to ignore
- * @param {boolean} [options.includeNodeModules] - Include files from node_modules
  * @returns {Promise<string[]>}
  */
 async function findReachable(options) {
@@ -130,7 +125,6 @@ async function findReachable(options) {
     project,
     cwd: options.cwd,
     ignore: options.ignore,
-    includeNodeModules: options.includeNodeModules,
   });
 }
 
