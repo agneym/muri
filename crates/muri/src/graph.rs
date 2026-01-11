@@ -2,21 +2,21 @@ use crate::parser::extract_imports;
 use crate::resolver::ModuleResolver;
 use dashmap::DashSet;
 use rayon::prelude::*;
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct DependencyGraph {
-    project_files: HashSet<PathBuf>,
+    project_files: FxHashSet<PathBuf>,
     resolver: Arc<ModuleResolver>,
 }
 
 impl DependencyGraph {
-    pub fn new(project_files: HashSet<PathBuf>, resolver: Arc<ModuleResolver>) -> Self {
+    pub fn new(project_files: FxHashSet<PathBuf>, resolver: Arc<ModuleResolver>) -> Self {
         Self { project_files, resolver }
     }
 
-    pub fn find_reachable(&self, entry_points: &[PathBuf]) -> HashSet<PathBuf> {
+    pub fn find_reachable(&self, entry_points: &[PathBuf]) -> FxHashSet<PathBuf> {
         let reachable: DashSet<PathBuf> = DashSet::new();
         let queue: DashSet<PathBuf> = DashSet::new();
 

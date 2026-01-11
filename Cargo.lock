@@ -411,6 +411,7 @@ dependencies = [
  "oxc_resolver",
  "oxc_span",
  "rayon",
+ "rustc-hash",
  "serde",
  "serde_json",
  "thiserror 2.0.17",

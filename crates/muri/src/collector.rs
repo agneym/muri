@@ -1,6 +1,6 @@
 use glob::Pattern;
 use ignore::WalkBuilder;
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
 pub struct Collector {
@@ -82,8 +82,8 @@ impl Collector {
         false
     }
 
-    pub fn collect_files(&self, patterns: &[String]) -> HashSet<PathBuf> {
-        let mut files = HashSet::new();
+    pub fn collect_files(&self, patterns: &[String]) -> FxHashSet<PathBuf> {
+        let mut files = FxHashSet::default();
 
         let walker = WalkBuilder::new(&self.cwd).hidden(false).git_ignore(true).build();
 
@@ -108,11 +108,11 @@ impl Collector {
         files
     }
 
-    pub fn collect_entry_files(&self, patterns: &[String]) -> HashSet<PathBuf> {
+    pub fn collect_entry_files(&self, patterns: &[String]) -> FxHashSet<PathBuf> {
         self.collect_files(patterns)
     }
 
-    pub fn collect_project_files(&self, patterns: &[String]) -> HashSet<PathBuf> {
+    pub fn collect_project_files(&self, patterns: &[String]) -> FxHashSet<PathBuf> {
         self.collect_files(patterns)
     }
 }
