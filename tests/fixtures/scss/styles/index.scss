@@ -1,0 +1,7 @@
+@use './variables';
+@use './mixins';
+
+.container {
+  background-color: variables.$primary-color;
+  @include mixins.flex-center;
+}

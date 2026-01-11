@@ -1,3 +1,4 @@
+use crate::compiler::CompilerRegistry;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Argument, Expression, Statement};
 use oxc_parser::Parser;
@@ -24,12 +25,38 @@ pub enum ImportKind {
 pub enum ParseError {
     IoError(std::io::Error),
     ParseFailed(String),
+    CompilerError(String),
 }
 
 impl From<std::io::Error> for ParseError {
     fn from(err: std::io::Error) -> Self {
         ParseError::IoError(err)
     }
+}
+
+impl From<crate::compiler::CompilerError> for ParseError {
+    fn from(err: crate::compiler::CompilerError) -> Self {
+        ParseError::CompilerError(err.to_string())
+    }
+}
+
+/// Extract imports from a file, using the compiler registry for non-JS/TS files
+pub fn extract_imports_with_compilers(
+    path: &Path,
+    registry: &CompilerRegistry,
+) -> Result<Vec<ImportInfo>, ParseError> {
+    let ext =
+        path.extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+
+    // Check if we have a compiler for this extension
+    if let Some(compiler) = registry.get(&ext) {
+        let content = std::fs::read_to_string(path)?;
+        let output = compiler.compile(&content, path)?;
+        return Ok(output.imports);
+    }
+
+    // Fall back to oxc parser for JS/TS
+    extract_imports(path)
 }
 
 pub fn extract_imports(path: &Path) -> Result<Vec<ImportInfo>, ParseError> {

@@ -41,6 +41,7 @@ impl From<UnusedFilesOptions> for MuriConfig {
                 .unwrap_or_else(|| vec!["**/*.{ts,tsx,js,jsx,mjs,cjs}".to_string()]),
             cwd: opts.cwd.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")),
             ignore: opts.ignore.unwrap_or_default(),
+            compilers: Default::default(),
         }
     }
 }

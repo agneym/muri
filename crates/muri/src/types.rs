@@ -16,6 +16,9 @@ pub struct MuriConfig {
 
     /// Patterns to ignore
     pub ignore: Vec<String>,
+
+    /// Compiler configuration
+    pub compilers: CompilerConfig,
 }
 
 impl Default for MuriConfig {
@@ -25,8 +28,29 @@ impl Default for MuriConfig {
             project: vec!["**/*.{ts,tsx,js,jsx,mjs,cjs}".to_string()],
             cwd: PathBuf::from("."),
             ignore: Vec::new(),
+            compilers: CompilerConfig::default(),
         }
     }
+}
+
+/// Configuration for file compilers
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CompilerConfig {
+    /// Enable/disable SCSS compiler (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub scss: Option<bool>,
+
+    /// Enable/disable Vue SFC compiler (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub vue: Option<bool>,
+
+    /// Enable/disable Svelte compiler (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub svelte: Option<bool>,
+
+    /// Additional file extensions to treat as JS/TS (passthrough to oxc parser)
+    #[serde(default)]
+    pub extensions: Vec<String>,
 }
 
 /// Error types for muri operations
@@ -50,4 +74,7 @@ pub struct FileConfig {
 
     #[serde(default)]
     pub ignore: Vec<String>,
+
+    #[serde(default)]
+    pub compilers: CompilerConfig,
 }

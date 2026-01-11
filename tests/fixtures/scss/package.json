@@ -1,0 +1,6 @@
+{
+  "name": "scss-test",
+  "devDependencies": {
+    "sass": "^1.60.0"
+  }
+}

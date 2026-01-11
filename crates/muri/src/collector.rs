@@ -83,6 +83,34 @@ impl Collector {
         }
     }
 
+    /// Create a collector with additional patterns for compiler extensions
+    pub fn with_compiler_extensions(
+        cwd: &Path,
+        entry_patterns: &[String],
+        project_patterns: &[String],
+        ignore_patterns: &[String],
+        compiler_extensions: &[String],
+    ) -> Self {
+        let mut extended_project_patterns = project_patterns.to_vec();
+
+        // Auto-add patterns for enabled compilers
+        for ext in compiler_extensions {
+            let pattern = format!("**/*{ext}");
+            if !extended_project_patterns.iter().any(|p| p.contains(ext)) {
+                extended_project_patterns.push(pattern);
+            }
+        }
+
+        Self {
+            cwd: cwd.to_path_buf(),
+            matchers: CompiledMatchers::new(
+                entry_patterns,
+                &extended_project_patterns,
+                ignore_patterns,
+            ),
+        }
+    }
+
     /// Collect all files in a single walk, categorizing them as entry/project files
     pub fn collect(&self) -> ProjectIndex {
         let mut entry_files = FxHashSet::default();

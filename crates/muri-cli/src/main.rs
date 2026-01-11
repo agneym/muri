@@ -85,7 +85,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Vec::new()
     };
 
-    let config = MuriConfig { entry, project, cwd: cli.cwd.clone(), ignore };
+    let compilers = file_config.as_ref().map(|cfg| cfg.compilers.clone()).unwrap_or_default();
+
+    let config = MuriConfig { entry, project, cwd: cli.cwd.clone(), ignore, compilers };
 
     let cwd = config.cwd.canonicalize()?;
 

@@ -1,6 +1,10 @@
-use crate::parser::{ImportInfo, ImportKind, ParseError, extract_imports};
+use crate::compiler::CompilerRegistry;
+use crate::parser::{
+    ImportInfo, ImportKind, ParseError, extract_imports, extract_imports_with_compilers,
+};
 use dashmap::DashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Information about a parsed module, stored in the cache.
 /// This struct is extensible for future features (unused exports, etc.)
@@ -35,11 +39,17 @@ impl ModuleInfo {
 /// Allows reusing parse results across the analysis and for future extensions.
 pub struct ModuleCache {
     cache: DashMap<PathBuf, ModuleInfo>,
+    compiler_registry: Option<Arc<CompilerRegistry>>,
 }
 
 impl ModuleCache {
     pub fn new() -> Self {
-        Self { cache: DashMap::new() }
+        Self { cache: DashMap::new(), compiler_registry: None }
+    }
+
+    /// Create a new ModuleCache with a compiler registry
+    pub fn with_compilers(registry: Arc<CompilerRegistry>) -> Self {
+        Self { cache: DashMap::new(), compiler_registry: Some(registry) }
     }
 
     /// Get or compute the ModuleInfo for a file
@@ -49,10 +59,17 @@ impl ModuleCache {
             return info.clone();
         }
 
-        // Parse the file
-        let info = match extract_imports(path) {
-            Ok(imports) => ModuleInfo::from_imports(imports),
-            Err(e) => ModuleInfo::from_error(e),
+        // Parse the file, using compilers if available
+        let info = if let Some(ref registry) = self.compiler_registry {
+            match extract_imports_with_compilers(path, registry) {
+                Ok(imports) => ModuleInfo::from_imports(imports),
+                Err(e) => ModuleInfo::from_error(e),
+            }
+        } else {
+            match extract_imports(path) {
+                Ok(imports) => ModuleInfo::from_imports(imports),
+                Err(e) => ModuleInfo::from_error(e),
+            }
         };
 
         // Insert and return

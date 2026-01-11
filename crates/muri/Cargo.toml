@@ -15,6 +15,7 @@ oxc_resolver.workspace = true
 oxc_ast.workspace = true
 oxc_span.workspace = true
 oxc_allocator.workspace = true
+regex.workspace = true
 glob.workspace = true
 globset.workspace = true
 rustc-hash.workspace = true
@@ -26,6 +27,9 @@ ignore.workspace = true
 dashmap.workspace = true
 thiserror.workspace = true
 clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true
