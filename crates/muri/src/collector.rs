@@ -1,17 +1,38 @@
-use glob::Pattern;
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
+use ignore::overrides::OverrideBuilder;
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
-pub struct Collector {
-    cwd: PathBuf,
-    ignore_patterns: Vec<Pattern>,
-    include_node_modules: bool,
+/// Result of a single filesystem walk that collects both entry and project files
+pub struct ProjectIndex {
+    pub entry_files: FxHashSet<PathBuf>,
+    pub project_files: FxHashSet<PathBuf>,
+}
+
+/// Precompiled glob matchers for efficient file matching
+struct CompiledMatchers {
+    entry: GlobSet,
+    project: GlobSet,
+    ignore: GlobSet,
+}
+
+impl CompiledMatchers {
+    fn new(
+        entry_patterns: &[String],
+        project_patterns: &[String],
+        ignore_patterns: &[String],
+    ) -> Self {
+        Self {
+            entry: compile_globset(entry_patterns),
+            project: compile_globset(project_patterns),
+            ignore: compile_globset(ignore_patterns),
+        }
+    }
 }
 
 /// Expand brace patterns like `**/*.{ts,tsx}` into multiple patterns
 fn expand_brace_pattern(pattern: &str) -> Vec<String> {
-    // Find brace group
     if let Some(start) = pattern.find('{') {
         if let Some(end) = pattern[start..].find('}') {
             let end = start + end;
@@ -31,61 +52,59 @@ fn expand_brace_pattern(pattern: &str) -> Vec<String> {
     vec![pattern.to_string()]
 }
 
+/// Compile a list of glob patterns into a GlobSet for efficient matching
+fn compile_globset(patterns: &[String]) -> GlobSet {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        for expanded in expand_brace_pattern(pattern) {
+            if let Ok(glob) = Glob::new(&expanded) {
+                builder.add(glob);
+            }
+        }
+    }
+    builder.build().unwrap_or_else(|_| GlobSetBuilder::new().build().unwrap())
+}
+
+pub struct Collector {
+    cwd: PathBuf,
+    matchers: CompiledMatchers,
+    include_node_modules: bool,
+}
+
 impl Collector {
-    pub fn new(cwd: &Path, ignore_patterns: &[String], include_node_modules: bool) -> Self {
-        let patterns = ignore_patterns
-            .iter()
-            .flat_map(|p| expand_brace_pattern(p))
-            .filter_map(|p| Pattern::new(&p).ok())
-            .collect();
-
-        Self { cwd: cwd.to_path_buf(), ignore_patterns: patterns, include_node_modules }
+    pub fn new(
+        cwd: &Path,
+        entry_patterns: &[String],
+        project_patterns: &[String],
+        ignore_patterns: &[String],
+        include_node_modules: bool,
+    ) -> Self {
+        Self {
+            cwd: cwd.to_path_buf(),
+            matchers: CompiledMatchers::new(entry_patterns, project_patterns, ignore_patterns),
+            include_node_modules,
+        }
     }
 
-    fn should_ignore(&self, path: &Path) -> bool {
-        let relative = path.strip_prefix(&self.cwd).unwrap_or(path);
-        let path_str = relative.to_string_lossy();
+    /// Collect all files in a single walk, categorizing them as entry/project files
+    pub fn collect(&self) -> ProjectIndex {
+        let mut entry_files = FxHashSet::default();
+        let mut project_files = FxHashSet::default();
 
-        // Check ignore patterns
-        for pattern in &self.ignore_patterns {
-            if pattern.matches(&path_str) {
-                return true;
-            }
-        }
+        let mut walker_builder = WalkBuilder::new(&self.cwd);
+        walker_builder.hidden(false).git_ignore(true);
 
-        // Check node_modules
+        // Prune node_modules during traversal (not after visiting)
         if !self.include_node_modules {
-            for component in relative.components() {
-                if component.as_os_str() == "node_modules" {
-                    return true;
-                }
+            let mut overrides = OverrideBuilder::new(&self.cwd);
+            // Use negation pattern to exclude node_modules directories
+            overrides.add("!**/node_modules/").ok();
+            if let Ok(built) = overrides.build() {
+                walker_builder.overrides(built);
             }
         }
 
-        false
-    }
-
-    fn matches_glob(&self, path: &Path, patterns: &[String]) -> bool {
-        let relative = path.strip_prefix(&self.cwd).unwrap_or(path);
-        let path_str = relative.to_string_lossy();
-
-        // Expand brace patterns and check
-        for pattern_str in patterns {
-            for expanded in expand_brace_pattern(pattern_str) {
-                if let Ok(pattern) = Pattern::new(&expanded) {
-                    if pattern.matches(&path_str) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
-    }
-
-    pub fn collect_files(&self, patterns: &[String]) -> FxHashSet<PathBuf> {
-        let mut files = FxHashSet::default();
-
-        let walker = WalkBuilder::new(&self.cwd).hidden(false).git_ignore(true).build();
+        let walker = walker_builder.build();
 
         for entry in walker.flatten() {
             let path = entry.path();
@@ -94,25 +113,35 @@ impl Collector {
                 continue;
             }
 
-            if self.should_ignore(path) {
+            let relative = path.strip_prefix(&self.cwd).unwrap_or(path);
+            let relative_str = relative.to_string_lossy();
+
+            // Check ignore patterns (precompiled)
+            if self.matchers.ignore.is_match(&*relative_str) {
                 continue;
             }
 
-            if self.matches_glob(path, patterns) {
-                if let Ok(canonical) = path.canonicalize() {
-                    files.insert(canonical);
-                }
+            // Canonicalize once for both checks
+            let canonical = match path.canonicalize() {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            // Check if file matches project patterns
+            let is_project = self.matchers.project.is_match(&*relative_str);
+
+            // Check if file matches entry patterns
+            let is_entry = self.matchers.entry.is_match(&*relative_str);
+
+            if is_project {
+                project_files.insert(canonical.clone());
+            }
+
+            if is_entry {
+                entry_files.insert(canonical);
             }
         }
 
-        files
-    }
-
-    pub fn collect_entry_files(&self, patterns: &[String]) -> FxHashSet<PathBuf> {
-        self.collect_files(patterns)
-    }
-
-    pub fn collect_project_files(&self, patterns: &[String]) -> FxHashSet<PathBuf> {
-        self.collect_files(patterns)
+        ProjectIndex { entry_files, project_files }
     }
 }

@@ -403,6 +403,7 @@ dependencies = [
  "clap",
  "dashmap",
  "glob",
+ "globset",
  "ignore",
  "json-strip-comments 3.1.0",
  "oxc_allocator",

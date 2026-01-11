@@ -1,4 +1,4 @@
-use crate::parser::extract_imports;
+use crate::module_cache::ModuleCache;
 use crate::resolver::ModuleResolver;
 use dashmap::DashSet;
 use rayon::prelude::*;
@@ -9,11 +9,16 @@ use std::sync::Arc;
 pub struct DependencyGraph {
     project_files: FxHashSet<PathBuf>,
     resolver: Arc<ModuleResolver>,
+    module_cache: Arc<ModuleCache>,
 }
 
 impl DependencyGraph {
-    pub fn new(project_files: FxHashSet<PathBuf>, resolver: Arc<ModuleResolver>) -> Self {
-        Self { project_files, resolver }
+    pub fn new(
+        project_files: FxHashSet<PathBuf>,
+        resolver: Arc<ModuleResolver>,
+        module_cache: Arc<ModuleCache>,
+    ) -> Self {
+        Self { project_files, resolver, module_cache }
     }
 
     pub fn find_reachable(&self, entry_points: &[PathBuf]) -> FxHashSet<PathBuf> {
@@ -35,14 +40,13 @@ impl DependencyGraph {
                     return; // Already processed
                 }
 
-                if let Ok(imports) = extract_imports(file) {
-                    for import in imports {
-                        if let Some(resolved) = self.resolver.resolve(file, &import.source) {
-                            if self.project_files.contains(&resolved)
-                                && !reachable.contains(&resolved)
-                            {
-                                queue.insert(resolved);
-                            }
+                // Use cached module info instead of re-parsing
+                let module_info = self.module_cache.get_or_parse(file);
+                for import in &module_info.imports {
+                    if let Some(resolved) = self.resolver.resolve(file, &import.source) {
+                        if self.project_files.contains(&resolved) && !reachable.contains(&resolved)
+                        {
+                            queue.insert(resolved);
                         }
                     }
                 }

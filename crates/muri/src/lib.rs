@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod collector;
 pub mod graph;
+pub mod module_cache;
 pub mod parser;
 pub mod reporter;
 pub mod resolver;
@@ -13,6 +14,7 @@ pub use types::{FileConfig, MuriConfig, MuriError};
 
 use collector::Collector;
 use graph::DependencyGraph;
+use module_cache::ModuleCache;
 use resolver::ModuleResolver;
 
 /// Find unused files in a JavaScript/TypeScript project
@@ -41,21 +43,27 @@ use resolver::ModuleResolver;
 pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
-    // Collect files
-    let collector = Collector::new(&cwd, &config.ignore, config.include_node_modules);
-    let entry_files = collector.collect_entry_files(&config.entry);
-    let project_files = collector.collect_project_files(&config.project);
+    // Single walk to collect both entry and project files
+    let collector = Collector::new(
+        &cwd,
+        &config.entry,
+        &config.project,
+        &config.ignore,
+        config.include_node_modules,
+    );
+    let index = collector.collect();
 
-    if entry_files.is_empty() {
+    if index.entry_files.is_empty() {
         return Err(MuriError::NoEntryFiles(config.entry));
     }
 
-    // Build graph and find unused
+    // Build graph and find unused (with shared module cache for parsing)
     let resolver = Arc::new(ModuleResolver::new(&cwd));
-    let graph = DependencyGraph::new(project_files.clone(), resolver);
-    let unused = graph.find_unused(&entry_files.into_iter().collect::<Vec<_>>());
+    let module_cache = Arc::new(ModuleCache::new());
+    let graph = DependencyGraph::new(index.project_files.clone(), resolver, module_cache);
+    let unused = graph.find_unused(&index.entry_files.into_iter().collect::<Vec<_>>());
 
-    Ok(Report::new(unused, project_files.len()))
+    Ok(Report::new(unused, index.project_files.len()))
 }
 
 /// Find all files reachable from entry points
@@ -65,17 +73,24 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
 pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf>, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
-    let collector = Collector::new(&cwd, &config.ignore, config.include_node_modules);
-    let entry_files = collector.collect_entry_files(&config.entry);
-    let project_files = collector.collect_project_files(&config.project);
+    // Single walk to collect both entry and project files
+    let collector = Collector::new(
+        &cwd,
+        &config.entry,
+        &config.project,
+        &config.ignore,
+        config.include_node_modules,
+    );
+    let index = collector.collect();
 
-    if entry_files.is_empty() {
+    if index.entry_files.is_empty() {
         return Err(MuriError::NoEntryFiles(config.entry));
     }
 
     let resolver = Arc::new(ModuleResolver::new(&cwd));
-    let graph = DependencyGraph::new(project_files, resolver);
-    let reachable = graph.find_reachable(&entry_files.into_iter().collect::<Vec<_>>());
+    let module_cache = Arc::new(ModuleCache::new());
+    let graph = DependencyGraph::new(index.project_files, resolver, module_cache);
+    let reachable = graph.find_reachable(&index.entry_files.into_iter().collect::<Vec<_>>());
 
     let mut result: Vec<_> = reachable.into_iter().collect();
     result.sort();
