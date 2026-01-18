@@ -42,6 +42,7 @@ impl From<UnusedFilesOptions> for MuriConfig {
             cwd: opts.cwd.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")),
             ignore: opts.ignore.unwrap_or_default(),
             compilers: Default::default(),
+            plugins: Default::default(),
         }
     }
 }

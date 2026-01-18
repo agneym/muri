@@ -20,6 +20,7 @@ fn test_scss_integration_finds_unused_files() {
         cwd: cwd.clone(),
         ignore: Vec::new(),
         compilers: Default::default(),
+        plugins: Default::default(),
     };
 
     let report = find_unused_files(config).expect("Should find unused files");
@@ -72,6 +73,7 @@ fn test_scss_integration_finds_reachable_files() {
         cwd: cwd.clone(),
         ignore: Vec::new(),
         compilers: Default::default(),
+        plugins: Default::default(),
     };
 
     let reachable = muri::find_reachable_files(config).expect("Should find reachable files");

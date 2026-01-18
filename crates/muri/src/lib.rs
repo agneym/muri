@@ -5,6 +5,7 @@ pub mod dependencies;
 pub mod graph;
 pub mod module_cache;
 pub mod parser;
+pub mod plugin;
 pub mod reporter;
 pub mod resolver;
 pub mod types;
@@ -12,22 +13,24 @@ pub mod types;
 use std::sync::Arc;
 
 pub use compiler::CompilerRegistry;
+pub use plugin::PluginRegistry;
 pub use reporter::Report;
-pub use types::{CompilerConfig, FileConfig, MuriConfig, MuriError};
+pub use types::{CompilerConfig, FileConfig, MuriConfig, MuriError, PluginConfig};
 
 use collector::Collector;
 use dependencies::detect_dependencies;
 use graph::DependencyGraph;
 use module_cache::ModuleCache;
+use plugin::{Plugin, StorybookPlugin};
 use resolver::ModuleResolver;
+use rustc_hash::FxHashSet;
 
 /// Create a compiler registry with built-in compilers enabled based on detected dependencies
 /// and user configuration
 fn create_compiler_registry(
-    cwd: &std::path::Path,
     compiler_config: &types::CompilerConfig,
+    deps: &FxHashSet<String>,
 ) -> CompilerRegistry {
-    let deps = detect_dependencies(cwd);
     let mut registry = CompilerRegistry::new();
 
     // SCSS compiler: check config override, then fall back to auto-detection
@@ -37,6 +40,27 @@ fn create_compiler_registry(
 
     if scss_enabled {
         registry.register(Arc::new(compiler::ScssCompiler::new()));
+    }
+
+    registry
+}
+
+/// Create a plugin registry with built-in plugins enabled based on detected dependencies
+/// and user configuration
+fn create_plugin_registry(
+    cwd: &std::path::Path,
+    plugin_config: &types::PluginConfig,
+    deps: &FxHashSet<String>,
+) -> PluginRegistry {
+    let mut registry = PluginRegistry::new();
+
+    // Storybook plugin: check config override, then fall back to auto-detection
+    let storybook_plugin = StorybookPlugin::new();
+    let storybook_enabled =
+        plugin_config.storybook.unwrap_or_else(|| storybook_plugin.should_enable(cwd, deps));
+
+    if storybook_enabled {
+        registry.register(Arc::new(storybook_plugin));
     }
 
     registry
@@ -68,8 +92,11 @@ fn create_compiler_registry(
 pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
+    // Detect dependencies once for both compilers and plugins
+    let deps = detect_dependencies(&cwd);
+
     // Setup compiler registry based on detected dependencies and user config
-    let registry = Arc::new(create_compiler_registry(&cwd, &config.compilers));
+    let registry = Arc::new(create_compiler_registry(&config.compilers, &deps));
     let compiler_extensions: Vec<String> = registry.extensions().cloned().collect();
 
     // Single walk to collect both entry and project files (with compiler extensions)
@@ -80,7 +107,18 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
         &config.ignore,
         &compiler_extensions,
     );
-    let index = collector.collect();
+    let mut index = collector.collect();
+
+    // Run plugins to discover additional entry points
+    let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
+    let plugin_entries = plugin_registry.detect_all_entries(&cwd);
+
+    // Merge plugin-discovered entries into index (only if they're in project files)
+    for entry in plugin_entries {
+        if index.project_files.contains(&entry) {
+            index.entry_files.insert(entry);
+        }
+    }
 
     if index.entry_files.is_empty() {
         return Err(MuriError::NoEntryFiles(config.entry));
@@ -102,8 +140,11 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
 pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf>, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
+    // Detect dependencies once for both compilers and plugins
+    let deps = detect_dependencies(&cwd);
+
     // Setup compiler registry based on detected dependencies and user config
-    let registry = Arc::new(create_compiler_registry(&cwd, &config.compilers));
+    let registry = Arc::new(create_compiler_registry(&config.compilers, &deps));
     let compiler_extensions: Vec<String> = registry.extensions().cloned().collect();
 
     // Single walk to collect both entry and project files (with compiler extensions)
@@ -114,7 +155,18 @@ pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf
         &config.ignore,
         &compiler_extensions,
     );
-    let index = collector.collect();
+    let mut index = collector.collect();
+
+    // Run plugins to discover additional entry points
+    let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
+    let plugin_entries = plugin_registry.detect_all_entries(&cwd);
+
+    // Merge plugin-discovered entries into index (only if they're in project files)
+    for entry in plugin_entries {
+        if index.project_files.contains(&entry) {
+            index.entry_files.insert(entry);
+        }
+    }
 
     if index.entry_files.is_empty() {
         return Err(MuriError::NoEntryFiles(config.entry));

@@ -19,6 +19,9 @@ pub struct MuriConfig {
 
     /// Compiler configuration
     pub compilers: CompilerConfig,
+
+    /// Plugin configuration
+    pub plugins: PluginConfig,
 }
 
 impl Default for MuriConfig {
@@ -29,6 +32,7 @@ impl Default for MuriConfig {
             cwd: PathBuf::from("."),
             ignore: Vec::new(),
             compilers: CompilerConfig::default(),
+            plugins: PluginConfig::default(),
         }
     }
 }
@@ -51,6 +55,26 @@ pub struct CompilerConfig {
     /// Additional file extensions to treat as JS/TS (passthrough to oxc parser)
     #[serde(default)]
     pub extensions: Vec<String>,
+}
+
+/// Configuration for plugins that discover entry points
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PluginConfig {
+    /// Enable/disable Storybook plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub storybook: Option<bool>,
+
+    /// Enable/disable Jest plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub jest: Option<bool>,
+
+    /// Enable/disable Vitest plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub vitest: Option<bool>,
+
+    /// Enable/disable Next.js plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub nextjs: Option<bool>,
 }
 
 /// Error types for muri operations
@@ -77,4 +101,7 @@ pub struct FileConfig {
 
     #[serde(default)]
     pub compilers: CompilerConfig,
+
+    #[serde(default)]
+    pub plugins: PluginConfig,
 }
