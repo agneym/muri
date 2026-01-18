@@ -32,24 +32,24 @@ switch (platform) {
   case 'android':
     switch (arch) {
       case 'arm64':
-        localFileExisted = existsSync(join(__dirname, 'unused-files.android-arm64.node'))
+        localFileExisted = existsSync(join(__dirname, 'muri.android-arm64.node'))
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.android-arm64.node')
+            nativeBinding = require('./muri.android-arm64.node')
           } else {
-            nativeBinding = require('unused-files-dev-android-arm64')
+            nativeBinding = require('muri-dev-android-arm64')
           }
         } catch (e) {
           loadError = e
         }
         break
       case 'arm':
-        localFileExisted = existsSync(join(__dirname, 'unused-files.android-arm-eabi.node'))
+        localFileExisted = existsSync(join(__dirname, 'muri.android-arm-eabi.node'))
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.android-arm-eabi.node')
+            nativeBinding = require('./muri.android-arm-eabi.node')
           } else {
-            nativeBinding = require('unused-files-dev-android-arm-eabi')
+            nativeBinding = require('muri-dev-android-arm-eabi')
           }
         } catch (e) {
           loadError = e
@@ -63,13 +63,13 @@ switch (platform) {
     switch (arch) {
       case 'x64':
         localFileExisted = existsSync(
-          join(__dirname, 'unused-files.win32-x64-msvc.node')
+          join(__dirname, 'muri.win32-x64-msvc.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.win32-x64-msvc.node')
+            nativeBinding = require('./muri.win32-x64-msvc.node')
           } else {
-            nativeBinding = require('unused-files-dev-win32-x64-msvc')
+            nativeBinding = require('muri-dev-win32-x64-msvc')
           }
         } catch (e) {
           loadError = e
@@ -77,13 +77,13 @@ switch (platform) {
         break
       case 'ia32':
         localFileExisted = existsSync(
-          join(__dirname, 'unused-files.win32-ia32-msvc.node')
+          join(__dirname, 'muri.win32-ia32-msvc.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.win32-ia32-msvc.node')
+            nativeBinding = require('./muri.win32-ia32-msvc.node')
           } else {
-            nativeBinding = require('unused-files-dev-win32-ia32-msvc')
+            nativeBinding = require('muri-dev-win32-ia32-msvc')
           }
         } catch (e) {
           loadError = e
@@ -91,13 +91,13 @@ switch (platform) {
         break
       case 'arm64':
         localFileExisted = existsSync(
-          join(__dirname, 'unused-files.win32-arm64-msvc.node')
+          join(__dirname, 'muri.win32-arm64-msvc.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.win32-arm64-msvc.node')
+            nativeBinding = require('./muri.win32-arm64-msvc.node')
           } else {
-            nativeBinding = require('unused-files-dev-win32-arm64-msvc')
+            nativeBinding = require('muri-dev-win32-arm64-msvc')
           }
         } catch (e) {
           loadError = e
@@ -108,23 +108,23 @@ switch (platform) {
     }
     break
   case 'darwin':
-    localFileExisted = existsSync(join(__dirname, 'unused-files.darwin-universal.node'))
+    localFileExisted = existsSync(join(__dirname, 'muri.darwin-universal.node'))
     try {
       if (localFileExisted) {
-        nativeBinding = require('./unused-files.darwin-universal.node')
+        nativeBinding = require('./muri.darwin-universal.node')
       } else {
-        nativeBinding = require('unused-files-dev-darwin-universal')
+        nativeBinding = require('muri-dev-darwin-universal')
       }
       break
     } catch {}
     switch (arch) {
       case 'x64':
-        localFileExisted = existsSync(join(__dirname, 'unused-files.darwin-x64.node'))
+        localFileExisted = existsSync(join(__dirname, 'muri.darwin-x64.node'))
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.darwin-x64.node')
+            nativeBinding = require('./muri.darwin-x64.node')
           } else {
-            nativeBinding = require('unused-files-dev-darwin-x64')
+            nativeBinding = require('muri-dev-darwin-x64')
           }
         } catch (e) {
           loadError = e
@@ -132,13 +132,13 @@ switch (platform) {
         break
       case 'arm64':
         localFileExisted = existsSync(
-          join(__dirname, 'unused-files.darwin-arm64.node')
+          join(__dirname, 'muri.darwin-arm64.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.darwin-arm64.node')
+            nativeBinding = require('./muri.darwin-arm64.node')
           } else {
-            nativeBinding = require('unused-files-dev-darwin-arm64')
+            nativeBinding = require('muri-dev-darwin-arm64')
           }
         } catch (e) {
           loadError = e
@@ -152,12 +152,12 @@ switch (platform) {
     if (arch !== 'x64') {
       throw new Error(`Unsupported architecture on FreeBSD: ${arch}`)
     }
-    localFileExisted = existsSync(join(__dirname, 'unused-files.freebsd-x64.node'))
+    localFileExisted = existsSync(join(__dirname, 'muri.freebsd-x64.node'))
     try {
       if (localFileExisted) {
-        nativeBinding = require('./unused-files.freebsd-x64.node')
+        nativeBinding = require('./muri.freebsd-x64.node')
       } else {
-        nativeBinding = require('unused-files-dev-freebsd-x64')
+        nativeBinding = require('muri-dev-freebsd-x64')
       }
     } catch (e) {
       loadError = e
@@ -168,26 +168,26 @@ switch (platform) {
       case 'x64':
         if (isMusl()) {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-x64-musl.node')
+            join(__dirname, 'muri.linux-x64-musl.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-x64-musl.node')
+              nativeBinding = require('./muri.linux-x64-musl.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-x64-musl')
+              nativeBinding = require('muri-dev-linux-x64-musl')
             }
           } catch (e) {
             loadError = e
           }
         } else {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-x64-gnu.node')
+            join(__dirname, 'muri.linux-x64-gnu.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-x64-gnu.node')
+              nativeBinding = require('./muri.linux-x64-gnu.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-x64-gnu')
+              nativeBinding = require('muri-dev-linux-x64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -197,26 +197,26 @@ switch (platform) {
       case 'arm64':
         if (isMusl()) {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-arm64-musl.node')
+            join(__dirname, 'muri.linux-arm64-musl.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-arm64-musl.node')
+              nativeBinding = require('./muri.linux-arm64-musl.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-arm64-musl')
+              nativeBinding = require('muri-dev-linux-arm64-musl')
             }
           } catch (e) {
             loadError = e
           }
         } else {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-arm64-gnu.node')
+            join(__dirname, 'muri.linux-arm64-gnu.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-arm64-gnu.node')
+              nativeBinding = require('./muri.linux-arm64-gnu.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-arm64-gnu')
+              nativeBinding = require('muri-dev-linux-arm64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -226,26 +226,26 @@ switch (platform) {
       case 'arm':
         if (isMusl()) {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-arm-musleabihf.node')
+            join(__dirname, 'muri.linux-arm-musleabihf.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-arm-musleabihf.node')
+              nativeBinding = require('./muri.linux-arm-musleabihf.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-arm-musleabihf')
+              nativeBinding = require('muri-dev-linux-arm-musleabihf')
             }
           } catch (e) {
             loadError = e
           }
         } else {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-arm-gnueabihf.node')
+            join(__dirname, 'muri.linux-arm-gnueabihf.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-arm-gnueabihf.node')
+              nativeBinding = require('./muri.linux-arm-gnueabihf.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-arm-gnueabihf')
+              nativeBinding = require('muri-dev-linux-arm-gnueabihf')
             }
           } catch (e) {
             loadError = e
@@ -255,26 +255,26 @@ switch (platform) {
       case 'riscv64':
         if (isMusl()) {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-riscv64-musl.node')
+            join(__dirname, 'muri.linux-riscv64-musl.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-riscv64-musl.node')
+              nativeBinding = require('./muri.linux-riscv64-musl.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-riscv64-musl')
+              nativeBinding = require('muri-dev-linux-riscv64-musl')
             }
           } catch (e) {
             loadError = e
           }
         } else {
           localFileExisted = existsSync(
-            join(__dirname, 'unused-files.linux-riscv64-gnu.node')
+            join(__dirname, 'muri.linux-riscv64-gnu.node')
           )
           try {
             if (localFileExisted) {
-              nativeBinding = require('./unused-files.linux-riscv64-gnu.node')
+              nativeBinding = require('./muri.linux-riscv64-gnu.node')
             } else {
-              nativeBinding = require('unused-files-dev-linux-riscv64-gnu')
+              nativeBinding = require('muri-dev-linux-riscv64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -283,13 +283,13 @@ switch (platform) {
         break
       case 's390x':
         localFileExisted = existsSync(
-          join(__dirname, 'unused-files.linux-s390x-gnu.node')
+          join(__dirname, 'muri.linux-s390x-gnu.node')
         )
         try {
           if (localFileExisted) {
-            nativeBinding = require('./unused-files.linux-s390x-gnu.node')
+            nativeBinding = require('./muri.linux-s390x-gnu.node')
           } else {
-            nativeBinding = require('unused-files-dev-linux-s390x-gnu')
+            nativeBinding = require('muri-dev-linux-s390x-gnu')
           }
         } catch (e) {
           loadError = e

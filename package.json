@@ -5,9 +5,9 @@
   "version": "0.1.0",
   "description": "Development workspace for muri",
   "scripts": {
-    "build": "napi build --platform --release --cargo-cwd crates/muri-napi --js native.js --dts native.d.ts npm/muri",
+    "build": "napi build --platform --release --cargo-cwd crates/muri-napi --js native.js --dts native.d.ts npm/muri && cargo build --release -p muri-cli && cp target/release/muri npm/muri/",
     "build:debug": "napi build --platform --manifest-path crates/muri-napi/Cargo.toml --js npm/muri/native.js --dts npm/muri/native.d.ts",
-    "prepublishOnly": "napi prepublish -t npm/muri",
+    "prepublishOnly": "napi prepublish -t npm/muri && node scripts/postprepublish.js",
     "test": "node tests/node-api.test.js",
     "universal": "napi universal -t npm/muri",
     "prepare": "lefthook install"

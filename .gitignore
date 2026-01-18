@@ -29,6 +29,9 @@ node_modules/
 jspm_packages/
 *.node
 
+# Built CLI binary
+npm/muri/muri
+
 # Compiled binary addons (https://nodejs.org/api/addons.html)
 build/Release
 

@@ -13,7 +13,8 @@
     "cli.js",
     "native.js",
     "native.d.ts",
-    "*.node"
+    "*.node",
+    "muri"
   ],
   "keywords": [
     "unused",

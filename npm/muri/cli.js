@@ -1,131 +1,53 @@
 #!/usr/bin/env node
+/**
+ * CLI spawner that delegates to the native muri binary.
+ * Tries local binary first (for development), then platform-specific package.
+ */
 
-const { findUnusedSync } = require('./index');
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-function parseArgs(args) {
-  const options = {
-    entry: [],
-    project: [],
-    cwd: process.cwd(),
-    ignore: [],
-    format: 'text',
-  };
+const PLATFORM_PACKAGES = {
+  'darwin-x64': 'muri-darwin-x64',
+  'darwin-arm64': 'muri-darwin-arm64',
+  'linux-x64': 'muri-linux-x64-gnu',
+  'linux-arm64': 'muri-linux-arm64-gnu',
+  'win32-x64': 'muri-win32-x64-msvc',
+};
 
-  function requireValue(flag) {
-    console.error(`Error: ${flag} requires a value`);
-    process.exit(1);
+function findBinary() {
+  // Try local binary first (development)
+  const localBinary = path.join(__dirname, 'muri');
+  if (fs.existsSync(localBinary)) {
+    return localBinary;
   }
 
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
+  // Try platform-specific package
+  const platformKey = `${process.platform}-${process.arch}`;
+  const pkgName = PLATFORM_PACKAGES[platformKey];
 
-    if (arg === '-e' || arg === '--entry') {
-      i++;
-      if (i >= args.length || args[i].startsWith('-')) {
-        requireValue(arg);
-      }
-      options.entry.push(args[i]);
-    } else if (arg === '-p' || arg === '--project') {
-      i++;
-      if (i >= args.length || args[i].startsWith('-')) {
-        requireValue(arg);
-      }
-      options.project.push(args[i]);
-    } else if (arg === '-C' || arg === '--cwd') {
-      i++;
-      if (i >= args.length || args[i].startsWith('-')) {
-        requireValue(arg);
-      }
-      options.cwd = args[i];
-    } else if (arg === '--ignore') {
-      i++;
-      if (i >= args.length || args[i].startsWith('-')) {
-        requireValue(arg);
-      }
-      options.ignore.push(args[i]);
-    } else if (arg === '--format') {
-      i++;
-      if (i >= args.length || args[i].startsWith('-')) {
-        requireValue(arg);
-      }
-      options.format = args[i];
-    } else if (arg === '-h' || arg === '--help') {
-      printHelp();
-      process.exit(0);
-    } else if (arg === '-V' || arg === '--version') {
-      const pkg = require('./package.json');
-      console.log(pkg.version);
-      process.exit(0);
-    }
-
-    i++;
-  }
-
-  return options;
-}
-
-function printHelp() {
-  console.log(`muri - Find unused files in JS/TS projects
-
-USAGE:
-    muri [OPTIONS]
-
-OPTIONS:
-    -e, --entry <PATTERN>      Entry point files or glob patterns (required, can be repeated)
-    -p, --project <PATTERN>    Project files to check (default: **/*.{ts,tsx,js,jsx,mjs,cjs})
-    -C, --cwd <PATH>           Working directory (default: .)
-    --ignore <PATTERN>         Patterns to ignore (can be repeated)
-    --format <FORMAT>          Output format: text or json (default: text)
-    -h, --help                 Print help
-    -V, --version              Print version
-
-EXAMPLES:
-    muri --entry src/index.ts
-    muri --entry src/main.ts --project "src/**/*.ts" --ignore "**/*.test.ts"
-    muri --entry src/index.ts --format json`);
-}
-
-function main() {
-  const args = process.argv.slice(2);
-  const options = parseArgs(args);
-
-  if (options.entry.length === 0) {
-    console.error('Error: At least one --entry is required');
-    console.error('Run with --help for usage information');
+  if (!pkgName) {
+    console.error(`Unsupported platform: ${platformKey}`);
     process.exit(1);
   }
 
   try {
-    const result = findUnusedSync({
-      entry: options.entry,
-      project: options.project.length > 0 ? options.project : undefined,
-      cwd: options.cwd,
-      ignore: options.ignore,
-    });
-
-    if (options.format === 'json') {
-      console.log(JSON.stringify(result, null, 2));
-    } else {
-      if (result.unusedCount === 0) {
-        console.log('No unused files found.');
-      } else {
-        console.log(`Unused files (${result.unusedCount}):`);
-        for (const file of result.unusedFiles) {
-          console.log(`  ${file}`);
-        }
-        console.log(`\n${result.unusedCount}/${result.totalFiles} files unused`);
-      }
-    }
-
-    // Exit with error code if unused files found
-    if (result.unusedCount > 0) {
-      process.exit(1);
-    }
-  } catch (error) {
-    console.error(`Error: ${error.message}`);
+    const pkgPath = require.resolve(`${pkgName}/package.json`);
+    const isWindows = process.platform === 'win32';
+    const binaryName = isWindows ? 'muri.exe' : 'muri';
+    return path.join(path.dirname(pkgPath), binaryName);
+  } catch {
+    console.error(`Could not find muri binary for platform: ${platformKey}`);
+    console.error(`Make sure ${pkgName} is installed.`);
     process.exit(1);
   }
 }
 
-main();
+const binPath = findBinary();
+
+try {
+  execFileSync(binPath, process.argv.slice(2), { stdio: 'inherit' });
+} catch (e) {
+  process.exit(e.status ?? 1);
+}
