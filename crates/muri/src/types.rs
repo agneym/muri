@@ -55,6 +55,10 @@ pub struct PluginConfig {
     #[serde(default)]
     pub storybook: Option<bool>,
 
+    /// Enable/disable Tailwind CSS plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub tailwind: Option<bool>,
+
     /// Enable/disable Jest plugin (None = auto-detect based on dependencies)
     #[serde(default)]
     pub jest: Option<bool>,

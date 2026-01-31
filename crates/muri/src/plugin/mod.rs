@@ -1,8 +1,10 @@
 mod registry;
 mod storybook;
+mod tailwind;
 
 pub use registry::PluginRegistry;
 pub use storybook::StorybookPlugin;
+pub use tailwind::TailwindPlugin;
 
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};

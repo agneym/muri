@@ -21,7 +21,7 @@ use collector::Collector;
 use dependencies::detect_dependencies;
 use graph::DependencyGraph;
 use module_cache::ModuleCache;
-use plugin::{Plugin, StorybookPlugin};
+use plugin::{Plugin, StorybookPlugin, TailwindPlugin};
 use resolver::ModuleResolver;
 use rustc_hash::FxHashSet;
 
@@ -41,6 +41,15 @@ fn create_plugin_registry(
 
     if storybook_enabled {
         registry.register(Arc::new(storybook_plugin));
+    }
+
+    // Tailwind plugin: check config override, then fall back to auto-detection
+    let tailwind_plugin = TailwindPlugin::new();
+    let tailwind_enabled =
+        plugin_config.tailwind.unwrap_or_else(|| tailwind_plugin.should_enable(cwd, deps));
+
+    if tailwind_enabled {
+        registry.register(Arc::new(tailwind_plugin));
     }
 
     registry
