@@ -1,5 +1,5 @@
 use super::{Plugin, PluginError};
-use globset::GlobBuilder;
+use fast_glob::glob_match;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -318,27 +318,15 @@ impl StorybookPlugin {
                 continue;
             }
 
-            // Build glob matcher using globset (which supports brace expansion)
-            let glob = match GlobBuilder::new(&glob_suffix).literal_separator(true).build() {
-                Ok(g) => g,
-                Err(_) => continue,
-            };
-            let matcher = glob.compile_matcher();
-
-            // Walk directory and match files
-            Self::walk_and_match(&canonical_base, &canonical_base, &matcher, &mut entries);
+            // Walk directory and match files using fast-glob (supports brace expansion)
+            Self::walk_and_match(&canonical_base, &canonical_base, &glob_suffix, &mut entries);
         }
 
         Ok(entries)
     }
 
     /// Recursively walk directory and collect files matching the glob pattern
-    fn walk_and_match(
-        dir: &Path,
-        base: &Path,
-        matcher: &globset::GlobMatcher,
-        entries: &mut Vec<PathBuf>,
-    ) {
+    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut Vec<PathBuf>) {
         let read_dir = match std::fs::read_dir(dir) {
             Ok(rd) => rd,
             Err(_) => return,
@@ -347,11 +335,12 @@ impl StorybookPlugin {
         for entry in read_dir.filter_map(|e| e.ok()) {
             let path = entry.path();
             if path.is_dir() {
-                Self::walk_and_match(&path, base, matcher, entries);
+                Self::walk_and_match(&path, base, pattern, entries);
             } else if path.is_file() {
-                // Match against relative path from base
+                // Match against relative path from base using fast-glob
                 if let Ok(relative) = path.strip_prefix(base) {
-                    if matcher.is_match(relative) {
+                    let relative_str = relative.to_string_lossy();
+                    if glob_match(pattern, relative_str.as_ref()) {
                         entries.push(path);
                     }
                 }

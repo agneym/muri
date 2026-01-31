@@ -1,5 +1,5 @@
 use super::{Plugin, PluginError};
-use glob::glob;
+use fast_glob::glob_match;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -351,64 +351,12 @@ impl VitestPlugin {
         }
     }
 
-    /// Expand brace patterns like {a,b} into multiple patterns
-    /// Example: "*.{test,spec}.ts" -> ["*.test.ts", "*.spec.ts"]
-    fn expand_brace_pattern(pattern: &str) -> Vec<String> {
-        // Find the first brace group
-        if let Some(start) = pattern.find('{') {
-            if let Some(end) = pattern[start..].find('}') {
-                let end = start + end;
-                let prefix = &pattern[..start];
-                let suffix = &pattern[end + 1..];
-                let alternatives: Vec<&str> = pattern[start + 1..end].split(',').collect();
-
-                let mut expanded = Vec::new();
-                for alt in alternatives {
-                    let new_pattern = format!("{}{}{}", prefix, alt, suffix);
-                    // Recursively expand in case there are more braces
-                    expanded.extend(Self::expand_brace_pattern(&new_pattern));
-                }
-                return expanded;
-            }
-        }
-        vec![pattern.to_string()]
-    }
-
     /// Check if a path should be excluded based on exclude patterns
-    /// Handles patterns like **/node_modules/** by checking path components
-    fn is_path_excluded(path: &Path, cwd: &Path, exclude_patterns: &[String]) -> bool {
-        // Get the relative path from cwd for easier matching
-        let relative = path.strip_prefix(cwd).unwrap_or(path);
-        let path_str = relative.to_string_lossy();
-
+    /// Uses fast-glob which supports brace expansion natively
+    fn is_path_excluded(relative_path: &str, exclude_patterns: &[String]) -> bool {
         for pattern in exclude_patterns {
-            // Handle **/dirname/** patterns by checking if dirname is a path component
-            if let Some(rest) = pattern.strip_prefix("**/") {
-                if let Some(dirname) = rest.strip_suffix("/**") {
-                    // Check if any path component matches
-                    for component in relative.components() {
-                        if let std::path::Component::Normal(name) = component {
-                            if name.to_string_lossy() == dirname {
-                                return true;
-                            }
-                        }
-                    }
-                } else {
-                    // Handle **/suffix patterns
-                    if path_str.ends_with(rest) {
-                        return true;
-                    }
-                }
-            } else if let Some(prefix) = pattern.strip_suffix("/**") {
-                // Handle prefix/** patterns
-                if path_str.starts_with(prefix) {
-                    return true;
-                }
-            } else if let Ok(glob_pattern) = glob::Pattern::new(pattern) {
-                // Try standard glob matching for other patterns
-                if glob_pattern.matches(&path_str) {
-                    return true;
-                }
+            if glob_match(pattern, relative_path) {
+                return true;
             }
         }
         false
@@ -424,33 +372,59 @@ impl VitestPlugin {
         let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
         let mut entries = FxHashSet::default();
 
-        // Expand brace patterns in exclude patterns for matching
-        let expanded_excludes: Vec<String> =
-            exclude_patterns.iter().flat_map(|p| Self::expand_brace_pattern(p)).collect();
+        // Walk from cwd and match files using fast-glob (supports brace expansion)
+        for pattern in patterns {
+            Self::walk_and_match(
+                &cwd_canonical,
+                &cwd_canonical,
+                pattern,
+                exclude_patterns,
+                &mut entries,
+            );
+        }
 
-        // Expand brace patterns in include patterns
-        let expanded_patterns: Vec<String> =
-            patterns.iter().flat_map(|p| Self::expand_brace_pattern(p)).collect();
+        Ok(entries.into_iter().collect())
+    }
 
-        for pattern in &expanded_patterns {
-            let full_pattern = cwd.join(pattern);
-            let pattern_str = full_pattern.to_string_lossy();
+    /// Recursively walk directory and collect files matching the glob pattern
+    fn walk_and_match(
+        dir: &Path,
+        base: &Path,
+        pattern: &str,
+        exclude_patterns: &[String],
+        entries: &mut FxHashSet<PathBuf>,
+    ) {
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
 
-            for entry in glob(&pattern_str)? {
-                let path = entry?;
-                // Validate path is within project directory
-                if let Ok(canonical) = path.canonicalize() {
-                    if canonical.starts_with(&cwd_canonical) {
-                        // Check against exclude patterns
-                        if !Self::is_path_excluded(&canonical, &cwd_canonical, &expanded_excludes) {
-                            entries.insert(canonical);
+        for entry in read_dir.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            let file_name = path.file_name().map(|n| n.to_string_lossy());
+
+            // Skip node_modules and hidden directories
+            if let Some(name) = &file_name {
+                if name == "node_modules" || name.starts_with('.') {
+                    continue;
+                }
+            }
+
+            if path.is_dir() {
+                Self::walk_and_match(&path, base, pattern, exclude_patterns, entries);
+            } else if path.is_file() {
+                // Match against relative path from base using fast-glob
+                if let Ok(relative) = path.strip_prefix(base) {
+                    let relative_str = relative.to_string_lossy();
+                    if glob_match(pattern, relative_str.as_ref()) {
+                        // Check exclusions
+                        if !Self::is_path_excluded(&relative_str, exclude_patterns) {
+                            entries.insert(path);
                         }
                     }
                 }
             }
         }
-
-        Ok(entries.into_iter().collect())
     }
 
     /// Resolve setup files to absolute paths

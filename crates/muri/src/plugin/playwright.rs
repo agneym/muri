@@ -1,5 +1,5 @@
 use super::{Plugin, PluginError};
-use glob::glob;
+use fast_glob::glob_match;
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -40,24 +40,44 @@ impl PlaywrightPlugin {
     /// Expand glob patterns relative to the project directory
     fn expand_patterns(&self, patterns: &[&str], cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
         let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-        let mut entries = Vec::new();
+        let mut entries = FxHashSet::default();
 
         for pattern in patterns {
-            let full_pattern = cwd.join(pattern);
-            let pattern_str = full_pattern.to_string_lossy();
+            Self::walk_and_match(&cwd_canonical, &cwd_canonical, pattern, &mut entries);
+        }
 
-            for entry in glob(&pattern_str)? {
-                let path = entry?;
-                // Validate path is within project directory to prevent path traversal
-                if let Ok(canonical) = path.canonicalize() {
-                    if canonical.starts_with(&cwd_canonical) {
-                        entries.push(canonical);
+        Ok(entries.into_iter().collect())
+    }
+
+    /// Recursively walk directory and collect files matching the glob pattern
+    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut FxHashSet<PathBuf>) {
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
+
+        for entry in read_dir.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            let file_name = path.file_name().map(|n| n.to_string_lossy());
+
+            // Skip node_modules and hidden directories
+            if let Some(name) = &file_name {
+                if name == "node_modules" || name.starts_with('.') {
+                    continue;
+                }
+            }
+
+            if path.is_dir() {
+                Self::walk_and_match(&path, base, pattern, entries);
+            } else if path.is_file() {
+                if let Ok(relative) = path.strip_prefix(base) {
+                    let relative_str = relative.to_string_lossy();
+                    if glob_match(pattern, relative_str.as_ref()) {
+                        entries.insert(path);
                     }
                 }
             }
         }
-
-        Ok(entries)
     }
 }
 

@@ -1,5 +1,5 @@
 use super::{Plugin, PluginError};
-use glob::glob;
+use fast_glob::glob_match;
 use rustc_hash::FxHashSet;
 use serde_json::Value;
 use std::fs;
@@ -32,12 +32,20 @@ impl TypescriptPlugin {
         }
 
         // Find tsconfig.*.json files (e.g., tsconfig.build.json, tsconfig.test.json)
-        let pattern = cwd.join("tsconfig.*.json").to_string_lossy().to_string();
-        for entry in glob(&pattern)? {
-            let path = entry?;
-            if path.is_file() {
-                if let Ok(canonical) = path.canonicalize() {
-                    found.insert(canonical);
+        // Use fast-glob pattern matching on directory entries
+        let pattern = "tsconfig.*.json";
+        if let Ok(read_dir) = std::fs::read_dir(cwd) {
+            for entry in read_dir.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name() {
+                        let name = file_name.to_string_lossy();
+                        if glob_match(pattern, name.as_ref()) {
+                            if let Ok(canonical) = path.canonicalize() {
+                                found.insert(canonical);
+                            }
+                        }
+                    }
                 }
             }
         }

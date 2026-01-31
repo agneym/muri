@@ -40,12 +40,6 @@ pub enum PluginError {
 
     #[error("Config parse error: {0}")]
     ConfigParse(String),
-
-    #[error("Glob pattern error: {0}")]
-    GlobPattern(#[from] glob::PatternError),
-
-    #[error("Glob error: {0}")]
-    GlobError(#[from] glob::GlobError),
 }
 
 /// A plugin discovers entry points from tool-specific configurations

@@ -1,5 +1,5 @@
 use super::{Plugin, PluginError};
-use glob::glob;
+use fast_glob::glob_match;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -382,29 +382,46 @@ impl JestPlugin {
         let mut entries = FxHashSet::default();
 
         for pattern in patterns {
-            let full_pattern = if let Some(stripped) = pattern.strip_prefix('/') {
-                // Absolute pattern (relative to project root in Jest)
-                cwd.join(stripped)
-            } else {
-                // Relative pattern - prepend cwd
-                cwd.join(pattern)
-            };
+            // Convert Jest pattern syntax to standard glob
+            let glob_pattern = self.convert_jest_glob(pattern);
 
-            let pattern_str = full_pattern.to_string_lossy();
-            let glob_pattern = self.convert_jest_glob(&pattern_str);
+            // Walk from cwd and match files using fast-glob
+            Self::walk_and_match(&cwd_canonical, &cwd_canonical, &glob_pattern, &mut entries);
+        }
 
-            for entry in glob(&glob_pattern)? {
-                let path = entry?;
-                // Validate path is within project directory
-                if let Ok(canonical) = path.canonicalize() {
-                    if canonical.starts_with(&cwd_canonical) {
-                        entries.insert(canonical);
+        Ok(entries.into_iter().collect())
+    }
+
+    /// Recursively walk directory and collect files matching the glob pattern
+    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut FxHashSet<PathBuf>) {
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
+
+        for entry in read_dir.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            let file_name = path.file_name().map(|n| n.to_string_lossy());
+
+            // Skip node_modules and hidden directories
+            if let Some(name) = &file_name {
+                if name == "node_modules" || name.starts_with('.') {
+                    continue;
+                }
+            }
+
+            if path.is_dir() {
+                Self::walk_and_match(&path, base, pattern, entries);
+            } else if path.is_file() {
+                // Match against relative path from base using fast-glob
+                if let Ok(relative) = path.strip_prefix(base) {
+                    let relative_str = relative.to_string_lossy();
+                    if glob_match(pattern, relative_str.as_ref()) {
+                        entries.insert(path);
                     }
                 }
             }
         }
-
-        Ok(entries.into_iter().collect())
     }
 
     /// Resolve setup files and transform paths to absolute paths

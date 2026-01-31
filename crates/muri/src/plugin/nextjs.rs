@@ -1,5 +1,5 @@
 use super::{Plugin, PluginError};
-use glob::glob;
+use fast_glob::glob_match;
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -44,41 +44,21 @@ impl NextjsPlugin {
             return Ok(Vec::new());
         }
 
-        let mut entries = Vec::new();
-        let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+        let mut entries = FxHashSet::default();
+        let app_canonical = app_dir.canonicalize().unwrap_or_else(|_| app_dir.clone());
 
-        // App Router special files
+        // App Router special files with brace expansion pattern
         // See: https://nextjs.org/docs/app/building-your-application/routing
-        let special_files = [
-            // Route files
-            ("page", &["js", "jsx", "ts", "tsx"][..]),
-            ("layout", &["js", "jsx", "ts", "tsx"][..]),
-            ("loading", &["js", "jsx", "ts", "tsx"][..]),
-            ("error", &["js", "jsx", "ts", "tsx"][..]),
-            ("not-found", &["js", "jsx", "ts", "tsx"][..]),
-            ("template", &["js", "jsx", "ts", "tsx"][..]),
-            ("default", &["js", "jsx", "ts", "tsx"][..]),
-            // Route handlers (API routes in App Router)
-            ("route", &["js", "ts"][..]),
+        let patterns = [
+            "**/{page,layout,loading,error,not-found,template,default}.{js,jsx,ts,tsx}",
+            "**/route.{js,ts}",
         ];
 
-        for (file_name, extensions) in &special_files {
-            for ext in *extensions {
-                let pattern = app_dir.join(format!("**/{}.{}", file_name, ext));
-                let pattern_str = pattern.to_string_lossy();
-
-                for entry in glob(&pattern_str)? {
-                    let path = entry?;
-                    if let Ok(canonical) = path.canonicalize() {
-                        if canonical.starts_with(&cwd_canonical) {
-                            entries.push(canonical);
-                        }
-                    }
-                }
-            }
+        for pattern in patterns {
+            Self::walk_and_match(&app_canonical, &app_canonical, pattern, &mut entries);
         }
 
-        Ok(entries)
+        Ok(entries.into_iter().collect())
     }
 
     /// Find Pages Router entry points (pages/ directory)
@@ -88,27 +68,45 @@ impl NextjsPlugin {
             return Ok(Vec::new());
         }
 
-        let mut entries = Vec::new();
-        let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+        let mut entries = FxHashSet::default();
+        let pages_canonical = pages_dir.canonicalize().unwrap_or_else(|_| pages_dir.clone());
 
         // All JS/TS files in pages/ are entry points
-        let extensions = ["js", "jsx", "ts", "tsx"];
+        let pattern = "**/*.{js,jsx,ts,tsx}";
+        Self::walk_and_match(&pages_canonical, &pages_canonical, pattern, &mut entries);
 
-        for ext in &extensions {
-            let pattern = pages_dir.join(format!("**/*.{}", ext));
-            let pattern_str = pattern.to_string_lossy();
+        Ok(entries.into_iter().collect())
+    }
 
-            for entry in glob(&pattern_str)? {
-                let path = entry?;
-                if let Ok(canonical) = path.canonicalize() {
-                    if canonical.starts_with(&cwd_canonical) {
-                        entries.push(canonical);
+    /// Recursively walk directory and collect files matching the glob pattern
+    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut FxHashSet<PathBuf>) {
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
+
+        for entry in read_dir.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            let file_name = path.file_name().map(|n| n.to_string_lossy());
+
+            // Skip node_modules and hidden directories
+            if let Some(name) = &file_name {
+                if name == "node_modules" || name.starts_with('.') {
+                    continue;
+                }
+            }
+
+            if path.is_dir() {
+                Self::walk_and_match(&path, base, pattern, entries);
+            } else if path.is_file() {
+                if let Ok(relative) = path.strip_prefix(base) {
+                    let relative_str = relative.to_string_lossy();
+                    if glob_match(pattern, relative_str.as_ref()) {
+                        entries.insert(path);
                     }
                 }
             }
         }
-
-        Ok(entries)
     }
 
     /// Find special Next.js files (middleware, instrumentation)
