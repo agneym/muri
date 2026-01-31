@@ -1,5 +1,4 @@
-use super::{Plugin, PluginError};
-use fast_glob::glob_match;
+use super::{EntryPattern, Plugin, PluginEntries, PluginError};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -37,18 +36,6 @@ const DEFAULT_TEST_PATTERNS: &[&str] = &[
     "**/__tests__/**/*.cts",
     "**/__tests__/**/*.jsx",
     "**/__tests__/**/*.tsx",
-];
-
-/// Default exclude patterns used by Vitest (expanded for glob compatibility)
-const DEFAULT_EXCLUDE_PATTERNS: &[&str] = &[
-    "**/node_modules/**",
-    "**/dist/**",
-    "**/cypress/**",
-    "**/.idea/**",
-    "**/.git/**",
-    "**/.cache/**",
-    "**/.output/**",
-    "**/.temp/**",
 ];
 
 /// Plugin to discover Vitest test files and setup files as entry points
@@ -351,80 +338,11 @@ impl VitestPlugin {
         }
     }
 
-    /// Check if a path should be excluded based on exclude patterns
-    /// Uses fast-glob which supports brace expansion natively
-    fn is_path_excluded(relative_path: &str, exclude_patterns: &[String]) -> bool {
-        for pattern in exclude_patterns {
-            if glob_match(pattern, relative_path) {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Expand glob patterns relative to the project directory
-    fn expand_patterns(
-        &self,
-        patterns: &[String],
-        exclude_patterns: &[String],
-        cwd: &Path,
-    ) -> Result<Vec<PathBuf>, PluginError> {
-        let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-        let mut entries = FxHashSet::default();
-
-        // Walk from cwd and match files using fast-glob (supports brace expansion)
-        for pattern in patterns {
-            Self::walk_and_match(
-                &cwd_canonical,
-                &cwd_canonical,
-                pattern,
-                exclude_patterns,
-                &mut entries,
-            );
-        }
-
-        Ok(entries.into_iter().collect())
-    }
-
-    /// Recursively walk directory and collect files matching the glob pattern
-    fn walk_and_match(
-        dir: &Path,
-        base: &Path,
-        pattern: &str,
-        exclude_patterns: &[String],
-        entries: &mut FxHashSet<PathBuf>,
-    ) {
-        let read_dir = match std::fs::read_dir(dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-
-        for entry in read_dir.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            let file_name = path.file_name().map(|n| n.to_string_lossy());
-
-            // Skip node_modules and hidden directories
-            if let Some(name) = &file_name {
-                if name == "node_modules" || name.starts_with('.') {
-                    continue;
-                }
-            }
-
-            if path.is_dir() {
-                Self::walk_and_match(&path, base, pattern, exclude_patterns, entries);
-            } else if path.is_file() {
-                // Match against relative path from base using fast-glob
-                if let Ok(relative) = path.strip_prefix(base) {
-                    let relative_str = relative.to_string_lossy();
-                    if glob_match(pattern, relative_str.as_ref()) {
-                        // Check exclusions
-                        if !Self::is_path_excluded(&relative_str, exclude_patterns) {
-                            entries.insert(path);
-                        }
-                    }
-                }
-            }
-        }
+    /// Convert include patterns to EntryPatterns
+    /// Note: Vitest exclude patterns are not currently handled as the collector
+    /// already excludes node_modules and common build directories
+    fn patterns_to_entry_patterns(patterns: &[String]) -> Vec<EntryPattern> {
+        patterns.iter().map(|p| EntryPattern::new(p.clone())).collect()
     }
 
     /// Resolve setup files to absolute paths
@@ -496,8 +414,8 @@ impl Plugin for VitestPlugin {
         dependencies.contains("vitest")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
-        let mut entries = Vec::new();
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
+        let mut paths = Vec::new();
 
         // Try to find and parse vitest config first
         let config_and_path = if let Some(vitest_config_path) = self.find_vitest_config(cwd) {
@@ -512,9 +430,9 @@ impl Plugin for VitestPlugin {
         };
 
         let config = if let Some((config, config_path)) = config_and_path {
-            // Add config file as entry point
+            // Add config file as entry point (path, not pattern)
             if let Ok(canonical) = config_path.canonicalize() {
-                entries.push(canonical);
+                paths.push(canonical);
             }
             config
         } else {
@@ -528,26 +446,18 @@ impl Plugin for VitestPlugin {
             config.include.clone()
         };
 
-        // Determine exclude patterns
-        let exclude_patterns: Vec<String> = if config.exclude.is_empty() {
-            DEFAULT_EXCLUDE_PATTERNS.iter().map(|s| s.to_string()).collect()
-        } else {
-            config.exclude.clone()
-        };
+        // Convert to EntryPatterns
+        let entry_patterns = Self::patterns_to_entry_patterns(&include_patterns);
 
-        // Expand test file patterns
-        let test_files = self.expand_patterns(&include_patterns, &exclude_patterns, cwd)?;
-        entries.extend(test_files);
-
-        // Resolve setup files
+        // Resolve setup files (paths, not patterns)
         let setup_files = self.resolve_setup_files(&config.setup_files, cwd)?;
-        entries.extend(setup_files);
+        paths.extend(setup_files);
 
         // Resolve global setup files
         let global_setup_files = self.resolve_setup_files(&config.global_setup, cwd)?;
-        entries.extend(global_setup_files);
+        paths.extend(global_setup_files);
 
-        Ok(entries)
+        Ok(PluginEntries::mixed(entry_patterns, paths))
     }
 }
 
@@ -735,21 +645,16 @@ export default {
         let plugin = VitestPlugin::new();
         let temp = tempdir().unwrap();
 
-        // Create test files matching default patterns
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("utils.test.ts"), "test('it works', () => {})").unwrap();
-        fs::write(src_dir.join("helper.spec.js"), "test('it works', () => {})").unwrap();
-        fs::write(src_dir.join("utils.ts"), "export const foo = 1").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let patterns = entries.get_patterns();
 
-        // Should find test files, not regular files
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"utils.test.ts".to_string()));
-        assert!(filenames.contains(&"helper.spec.js".to_string()));
-        assert!(!filenames.contains(&"utils.ts".to_string()));
+        // Should have default test patterns (no config file, so uses defaults)
+        assert!(!patterns.is_empty());
+        // Verify some expected default patterns are present
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"**/*.test.ts"));
+        assert!(pattern_strs.contains(&"**/*.spec.js"));
+        assert!(pattern_strs.contains(&"**/__tests__/**/*.ts"));
     }
 
     #[test]
@@ -765,26 +670,19 @@ export default {
 "#;
         fs::write(temp.path().join("vitest.config.ts"), config_content).unwrap();
 
-        // Create test files
-        let tests_dir = temp.path().join("tests");
-        fs::create_dir(&tests_dir).unwrap();
-        fs::write(tests_dir.join("api.test.ts"), "test('api', () => {})").unwrap();
-
-        // Also create a file that matches default patterns but not custom ones
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("utils.test.ts"), "test('utils', () => {})").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+        // Should include config file in paths
+        assert!(paths.iter().any(|p| p.ends_with("vitest.config.ts")));
 
-        // Should include config file and test files matching custom pattern
-        assert!(filenames.contains(&"vitest.config.ts".to_string()));
-        assert!(filenames.contains(&"api.test.ts".to_string()));
-        // Should NOT include files outside the custom include pattern
-        assert!(!filenames.contains(&"utils.test.ts".to_string()));
+        // Should have custom test patterns (not defaults)
+        assert!(!patterns.is_empty());
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"tests/**/*.test.ts"));
+        // Should NOT include default patterns when custom include is specified
+        assert_eq!(patterns.len(), 1);
     }
 
     #[test]
@@ -808,9 +706,11 @@ export default {
         fs::write(test_dir.join("global-setup.ts"), "// global setup").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
 
+        // Config file and setup files should be in paths
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
 
         assert!(filenames.contains(&"vitest.config.ts".to_string()));
         assert!(filenames.contains(&"setup.ts".to_string()));
@@ -822,26 +722,17 @@ export default {
         let plugin = VitestPlugin::new();
         let temp = tempdir().unwrap();
 
-        // Create test files in src
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("app.test.ts"), "test('app', () => {})").unwrap();
-
-        // Create test files in node_modules (should be excluded)
-        let node_modules = temp.path().join("node_modules");
-        fs::create_dir(&node_modules).unwrap();
-        let pkg_dir = node_modules.join("some-pkg");
-        fs::create_dir(&pkg_dir).unwrap();
-        fs::write(pkg_dir.join("index.test.ts"), "test('pkg', () => {})").unwrap();
-
+        // Note: The plugin returns patterns, not resolved paths for test files.
+        // Exclusion of node_modules happens at the collector level when matching patterns.
+        // This test verifies the plugin returns the expected patterns.
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let patterns = entries.get_patterns();
 
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
-
-        // Should include src test file
-        assert!(paths.iter().any(|p| p.ends_with("app.test.ts")));
-        // Should NOT include node_modules test file
-        assert!(!paths.iter().any(|p| p.contains("node_modules")));
+        // Should have default test patterns
+        assert!(!patterns.is_empty());
+        // Patterns themselves don't include node_modules - that's handled by the collector
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.iter().any(|p| p.contains("**/*.test.ts")));
     }
 
     #[test]
@@ -861,18 +752,18 @@ export default defineConfig({
 "#;
         fs::write(temp.path().join("vite.config.ts"), config_content).unwrap();
 
-        // Create test file
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("component.spec.ts"), "test('component', () => {})").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+        // Config file should be in paths
+        let path_filenames: Vec<_> =
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+        assert!(path_filenames.contains(&"vite.config.ts".to_string()));
 
-        assert!(filenames.contains(&"vite.config.ts".to_string()));
-        assert!(filenames.contains(&"component.spec.ts".to_string()));
+        // Test patterns should be in patterns
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"src/**/*.spec.ts"));
     }
 
     #[test]
@@ -881,19 +772,17 @@ export default defineConfig({
         let temp = tempdir().unwrap();
 
         // No config file, should use default patterns
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("utils.test.ts"), "test('utils', () => {})").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+        // Should NOT include any config file (none exists)
+        assert!(paths.is_empty());
 
-        // Should find test file using default patterns
-        assert!(filenames.contains(&"utils.test.ts".to_string()));
-        // Should NOT include config file (none exists)
-        assert!(!filenames.iter().any(|f| f.contains("vitest.config")));
+        // Should have default test patterns
+        assert!(!patterns.is_empty());
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"**/*.test.ts"));
     }
 
     #[test]
@@ -901,18 +790,13 @@ export default defineConfig({
         let plugin = VitestPlugin::new();
         let temp = tempdir().unwrap();
 
-        // Create __tests__ directory (matches default pattern)
-        let tests_dir = temp.path().join("__tests__");
-        fs::create_dir(&tests_dir).unwrap();
-        fs::write(tests_dir.join("utils.ts"), "test('utils', () => {})").unwrap();
-
+        // __tests__ directory pattern is in the default patterns
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-
-        // Should find file in __tests__ directory
-        assert!(filenames.contains(&"utils.ts".to_string()));
+        // Should have pattern for __tests__ directory
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.iter().any(|p| p.contains("__tests__")));
     }
 
     #[test]

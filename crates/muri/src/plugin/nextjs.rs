@@ -1,5 +1,4 @@
-use super::{Plugin, PluginError};
-use fast_glob::glob_match;
+use super::{EntryPattern, Plugin, PluginEntries, PluginError};
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -37,76 +36,33 @@ impl NextjsPlugin {
         found
     }
 
-    /// Find App Router entry points (app/ directory)
-    fn find_app_router_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    /// Get App Router patterns (app/ directory)
+    fn app_router_patterns(cwd: &Path) -> Vec<EntryPattern> {
         let app_dir = cwd.join("app");
         if !app_dir.exists() || !app_dir.is_dir() {
-            return Ok(Vec::new());
+            return Vec::new();
         }
-
-        let mut entries = FxHashSet::default();
-        let app_canonical = app_dir.canonicalize().unwrap_or_else(|_| app_dir.clone());
 
         // App Router special files with brace expansion pattern
         // See: https://nextjs.org/docs/app/building-your-application/routing
-        let patterns = [
-            "**/{page,layout,loading,error,not-found,template,default}.{js,jsx,ts,tsx}",
-            "**/route.{js,ts}",
-        ];
-
-        for pattern in patterns {
-            Self::walk_and_match(&app_canonical, &app_canonical, pattern, &mut entries);
-        }
-
-        Ok(entries.into_iter().collect())
+        vec![
+            EntryPattern::with_base(
+                "**/{page,layout,loading,error,not-found,template,default}.{js,jsx,ts,tsx}",
+                "app",
+            ),
+            EntryPattern::with_base("**/route.{js,ts}", "app"),
+        ]
     }
 
-    /// Find Pages Router entry points (pages/ directory)
-    fn find_pages_router_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    /// Get Pages Router patterns (pages/ directory)
+    fn pages_router_patterns(cwd: &Path) -> Vec<EntryPattern> {
         let pages_dir = cwd.join("pages");
         if !pages_dir.exists() || !pages_dir.is_dir() {
-            return Ok(Vec::new());
+            return Vec::new();
         }
-
-        let mut entries = FxHashSet::default();
-        let pages_canonical = pages_dir.canonicalize().unwrap_or_else(|_| pages_dir.clone());
 
         // All JS/TS files in pages/ are entry points
-        let pattern = "**/*.{js,jsx,ts,tsx}";
-        Self::walk_and_match(&pages_canonical, &pages_canonical, pattern, &mut entries);
-
-        Ok(entries.into_iter().collect())
-    }
-
-    /// Recursively walk directory and collect files matching the glob pattern
-    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut FxHashSet<PathBuf>) {
-        let read_dir = match std::fs::read_dir(dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-
-        for entry in read_dir.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            let file_name = path.file_name().map(|n| n.to_string_lossy());
-
-            // Skip node_modules and hidden directories
-            if let Some(name) = &file_name {
-                if name == "node_modules" || name.starts_with('.') {
-                    continue;
-                }
-            }
-
-            if path.is_dir() {
-                Self::walk_and_match(&path, base, pattern, entries);
-            } else if path.is_file() {
-                if let Ok(relative) = path.strip_prefix(base) {
-                    let relative_str = relative.to_string_lossy();
-                    if glob_match(pattern, relative_str.as_ref()) {
-                        entries.insert(path);
-                    }
-                }
-            }
-        }
+        vec![EntryPattern::with_base("**/*.{js,jsx,ts,tsx}", "pages")]
     }
 
     /// Find special Next.js files (middleware, instrumentation)
@@ -151,22 +107,23 @@ impl Plugin for NextjsPlugin {
         dependencies.contains("next")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
-        let mut entries = Vec::new();
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
+        let mut paths = Vec::new();
+        let mut patterns = Vec::new();
 
-        // Add config files
-        entries.extend(self.find_config_files(cwd));
+        // Add config files (paths, not patterns)
+        paths.extend(self.find_config_files(cwd));
 
-        // Add App Router entries
-        entries.extend(self.find_app_router_entries(cwd)?);
+        // Add special files (middleware, instrumentation - paths, not patterns)
+        paths.extend(self.find_special_files(cwd));
 
-        // Add Pages Router entries
-        entries.extend(self.find_pages_router_entries(cwd)?);
+        // Add App Router patterns
+        patterns.extend(Self::app_router_patterns(cwd));
 
-        // Add special files
-        entries.extend(self.find_special_files(cwd));
+        // Add Pages Router patterns
+        patterns.extend(Self::pages_router_patterns(cwd));
 
-        Ok(entries)
+        Ok(PluginEntries::mixed(patterns, paths))
     }
 }
 
@@ -209,8 +166,9 @@ module.exports = nextConfig;
         fs::write(temp.path().join("next.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("next.config.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("next.config.js"));
     }
 
     #[test]
@@ -226,8 +184,9 @@ export default nextConfig;
         fs::write(temp.path().join("next.config.mjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("next.config.mjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("next.config.mjs"));
     }
 
     #[test]
@@ -244,8 +203,9 @@ export default nextConfig;
         fs::write(temp.path().join("next.config.ts"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("next.config.ts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("next.config.ts"));
     }
 
     #[test]
@@ -263,11 +223,14 @@ export default nextConfig;
         fs::write(about_dir.join("page.tsx"), "export default function About() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.iter().all(|f| f == "page.tsx"));
+        // Should have patterns for app router
+        assert!(!patterns.is_empty());
+        // Check that one of the patterns has base "app"
+        assert!(patterns.iter().any(|p| {
+            p.base.as_ref().map(|b| b.to_string_lossy().contains("app")).unwrap_or(false)
+        }));
     }
 
     #[test]
@@ -285,7 +248,12 @@ export default nextConfig;
             .unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
+
+        // Should have patterns for app router
+        assert!(!patterns.is_empty());
+        // The pattern should include layout in the brace expansion
+        assert!(patterns.iter().any(|p| p.pattern.contains("layout")));
     }
 
     #[test]
@@ -307,7 +275,20 @@ export default nextConfig;
         fs::write(app_dir.join("default.tsx"), "export default function Default() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 7);
+        let patterns = entries.get_patterns();
+
+        // Should have patterns for app router
+        assert!(!patterns.is_empty());
+        // The main pattern should include all special files
+        let main_pattern = patterns.iter().find(|p| p.pattern.contains("page"));
+        assert!(main_pattern.is_some());
+        let pattern = &main_pattern.unwrap().pattern;
+        assert!(pattern.contains("layout"));
+        assert!(pattern.contains("loading"));
+        assert!(pattern.contains("error"));
+        assert!(pattern.contains("not-found"));
+        assert!(pattern.contains("template"));
+        assert!(pattern.contains("default"));
     }
 
     #[test]
@@ -320,8 +301,14 @@ export default nextConfig;
         fs::write(api_dir.join("route.ts"), "export async function GET() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("route.ts"));
+        let patterns = entries.get_patterns();
+
+        // Should have a pattern for route handlers
+        assert!(patterns.iter().any(|p| p.pattern.contains("route")));
+        // Should have base "app"
+        assert!(patterns.iter().any(|p| {
+            p.base.as_ref().map(|b| b.to_string_lossy().contains("app")).unwrap_or(false)
+        }));
     }
 
     #[test]
@@ -342,7 +329,16 @@ export default nextConfig;
         fs::write(api_dir.join("hello.ts"), "export default function handler() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 5);
+        let patterns = entries.get_patterns();
+
+        // Should have a pattern for pages router
+        assert!(!patterns.is_empty());
+        // Should have base "pages"
+        assert!(patterns.iter().any(|p| {
+            p.base.as_ref().map(|b| b.to_string_lossy().contains("pages")).unwrap_or(false)
+        }));
+        // Pattern should match all JS/TS files
+        assert!(patterns.iter().any(|p| p.pattern.contains("**/*.{js,jsx,ts,tsx}")));
     }
 
     #[test]
@@ -353,8 +349,9 @@ export default nextConfig;
         fs::write(temp.path().join("middleware.ts"), "export function middleware() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("middleware.ts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("middleware.ts"));
     }
 
     #[test]
@@ -367,8 +364,9 @@ export default nextConfig;
         fs::write(src_dir.join("middleware.ts"), "export function middleware() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("middleware.ts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("middleware.ts"));
     }
 
     #[test]
@@ -379,8 +377,9 @@ export default nextConfig;
         fs::write(temp.path().join("instrumentation.ts"), "export function register() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("instrumentation.ts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("instrumentation.ts"));
     }
 
     #[test]
@@ -391,8 +390,9 @@ export default nextConfig;
         fs::write(temp.path().join("instrumentation.js"), "export function register() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("instrumentation.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("instrumentation.js"));
     }
 
     #[test]
@@ -418,8 +418,22 @@ export default nextConfig;
         fs::write(temp.path().join("middleware.ts"), "export function middleware() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        // 1 config + 2 app router + 1 pages router + 1 middleware = 5
-        assert_eq!(entries.len(), 5);
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
+
+        // Should have 2 paths: config + middleware
+        assert_eq!(paths.len(), 2);
+        assert!(paths.iter().any(|p| p.ends_with("next.config.js")));
+        assert!(paths.iter().any(|p| p.ends_with("middleware.ts")));
+
+        // Should have patterns for both app and pages routers
+        assert!(!patterns.is_empty());
+        assert!(patterns.iter().any(|p| {
+            p.base.as_ref().map(|b| b.to_string_lossy().contains("app")).unwrap_or(false)
+        }));
+        assert!(patterns.iter().any(|p| {
+            p.base.as_ref().map(|b| b.to_string_lossy().contains("pages")).unwrap_or(false)
+        }));
     }
 
     #[test]
@@ -434,7 +448,12 @@ export default nextConfig;
         fs::write(dashboard_dir.join("page.tsx"), "export default function Profile() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
+        let patterns = entries.get_patterns();
+
+        // Should have patterns for app router (which will match nested pages)
+        assert!(!patterns.is_empty());
+        // The pattern should use ** to match deeply nested files
+        assert!(patterns.iter().any(|p| p.pattern.starts_with("**/")));
     }
 
     #[test]
@@ -456,8 +475,11 @@ export default nextConfig;
         fs::write(app_dir.join("page.js"), "export default function Home() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("page.js"));
+        let patterns = entries.get_patterns();
+
+        // Should have patterns that include js extension in brace expansion
+        assert!(!patterns.is_empty());
+        assert!(patterns.iter().any(|p| p.pattern.contains("{js,")));
     }
 
     #[test]
@@ -470,8 +492,11 @@ export default nextConfig;
         fs::write(app_dir.join("page.jsx"), "export default function Home() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("page.jsx"));
+        let patterns = entries.get_patterns();
+
+        // Should have patterns that include .jsx extension
+        assert!(!patterns.is_empty());
+        assert!(patterns.iter().any(|p| p.pattern.contains("jsx")));
     }
 
     #[test]
@@ -484,8 +509,10 @@ export default nextConfig;
         fs::write(api_dir.join("route.js"), "export async function GET() {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("route.js"));
+        let patterns = entries.get_patterns();
+
+        // Should have a pattern for route handlers that includes js extension in brace expansion
+        assert!(patterns.iter().any(|p| p.pattern.contains("route") && p.pattern.contains("{js,")));
     }
 
     #[test]

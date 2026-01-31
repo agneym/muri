@@ -1,5 +1,4 @@
-use super::{Plugin, PluginError};
-use fast_glob::glob_match;
+use super::{EntryPattern, Plugin, PluginEntries, PluginError};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -372,56 +371,15 @@ impl JestPlugin {
         new_result
     }
 
-    /// Expand glob patterns to find matching files
-    fn expand_patterns(
-        &self,
-        patterns: &[String],
-        cwd: &Path,
-    ) -> Result<Vec<PathBuf>, PluginError> {
-        let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-        let mut entries = FxHashSet::default();
-
-        for pattern in patterns {
-            // Convert Jest pattern syntax to standard glob
-            let glob_pattern = self.convert_jest_glob(pattern);
-
-            // Walk from cwd and match files using fast-glob
-            Self::walk_and_match(&cwd_canonical, &cwd_canonical, &glob_pattern, &mut entries);
-        }
-
-        Ok(entries.into_iter().collect())
-    }
-
-    /// Recursively walk directory and collect files matching the glob pattern
-    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut FxHashSet<PathBuf>) {
-        let read_dir = match std::fs::read_dir(dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-
-        for entry in read_dir.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            let file_name = path.file_name().map(|n| n.to_string_lossy());
-
-            // Skip node_modules and hidden directories
-            if let Some(name) = &file_name {
-                if name == "node_modules" || name.starts_with('.') {
-                    continue;
-                }
-            }
-
-            if path.is_dir() {
-                Self::walk_and_match(&path, base, pattern, entries);
-            } else if path.is_file() {
-                // Match against relative path from base using fast-glob
-                if let Ok(relative) = path.strip_prefix(base) {
-                    let relative_str = relative.to_string_lossy();
-                    if glob_match(pattern, relative_str.as_ref()) {
-                        entries.insert(path);
-                    }
-                }
-            }
-        }
+    /// Convert test patterns to EntryPatterns
+    fn patterns_to_entry_patterns(&self, patterns: &[String]) -> Vec<EntryPattern> {
+        patterns
+            .iter()
+            .map(|p| {
+                let converted = self.convert_jest_glob(p);
+                EntryPattern::new(converted)
+            })
+            .collect()
     }
 
     /// Resolve setup files and transform paths to absolute paths
@@ -501,17 +459,17 @@ impl Plugin for JestPlugin {
         dependencies.contains("jest")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
-        let mut entries = FxHashSet::default();
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
+        let mut paths = Vec::new();
 
         // Find and parse config files
         let config_files = self.find_config_files(cwd);
         let mut config = JestConfig::default();
 
         for config_path in &config_files {
-            // Add config file itself as entry point
+            // Add config file itself as entry point (path, not pattern)
             if let Ok(canonical) = config_path.canonicalize() {
-                entries.insert(canonical);
+                paths.push(canonical);
             }
 
             // Parse config
@@ -543,32 +501,24 @@ impl Plugin for JestPlugin {
             DEFAULT_TEST_PATTERNS.iter().map(|s| s.to_string()).collect()
         };
 
-        // Expand test patterns
-        if let Ok(test_files) = self.expand_patterns(&test_patterns, cwd) {
-            entries.extend(test_files);
-        }
+        // Convert test patterns to EntryPatterns
+        let entry_patterns = self.patterns_to_entry_patterns(&test_patterns);
 
-        // Resolve setup files
+        // Resolve setup files (paths, not patterns)
         if let Some(setup_files) = &config.setup_files {
-            for path in self.resolve_paths(setup_files, cwd) {
-                entries.insert(path);
-            }
+            paths.extend(self.resolve_paths(setup_files, cwd));
         }
 
         if let Some(setup_files_after_env) = &config.setup_files_after_env {
-            for path in self.resolve_paths(setup_files_after_env, cwd) {
-                entries.insert(path);
-            }
+            paths.extend(self.resolve_paths(setup_files_after_env, cwd));
         }
 
         // Resolve transform paths (only local ones)
         if let Some(transform) = &config.transform {
-            for path in self.resolve_paths(transform, cwd) {
-                entries.insert(path);
-            }
+            paths.extend(self.resolve_paths(transform, cwd));
         }
 
-        Ok(entries.into_iter().collect())
+        Ok(PluginEntries::mixed(entry_patterns, paths))
     }
 }
 
@@ -786,27 +736,15 @@ module.exports = {
 "#;
         fs::write(temp.path().join("jest.config.js"), config_content).unwrap();
 
-        // Create test files
-        let tests_dir = temp.path().join("__tests__");
-        fs::create_dir(&tests_dir).unwrap();
-        fs::write(tests_dir.join("app.test.ts"), "test('works', () => {})").unwrap();
-        fs::write(tests_dir.join("utils.test.ts"), "test('works', () => {})").unwrap();
-
-        // Create non-test file
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("app.ts"), "export const foo = 1").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        // Should include config + test files
-        assert!(entries.len() >= 3);
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        // Should include config file in paths
         assert!(paths.iter().any(|p| p.ends_with("jest.config.js")));
-        assert!(paths.iter().any(|p| p.ends_with("app.test.ts")));
-        assert!(paths.iter().any(|p| p.ends_with("utils.test.ts")));
-        // Should not include non-test files
-        assert!(!paths.iter().any(|p| p.ends_with("app.ts")));
+        // Should have test patterns
+        assert!(!patterns.is_empty());
+        assert!(patterns.iter().any(|p| p.pattern.contains("__tests__")));
     }
 
     #[test]
@@ -826,9 +764,12 @@ module.exports = {
         fs::write(temp.path().join("jest.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
 
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        // Setup files should be in paths
         assert!(paths.iter().any(|p| p.ends_with("jest.setup.js")));
+        // Config file should also be in paths
+        assert!(paths.iter().any(|p| p.ends_with("jest.config.js")));
     }
 
     #[test]
@@ -850,9 +791,12 @@ module.exports = {
         fs::write(temp.path().join("jest.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
 
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        // Setup file with <rootDir> prefix should be resolved and in paths
         assert!(paths.iter().any(|p| p.ends_with("setup.ts")));
+        // Config file should also be in paths
+        assert!(paths.iter().any(|p| p.ends_with("jest.config.js")));
     }
 
     #[test]
@@ -875,12 +819,14 @@ module.exports = {
         fs::write(temp.path().join("jest.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
 
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
-        // Should include local transformer
+        // Should include local transformer in paths
         assert!(paths.iter().any(|p| p.ends_with("custom-transformer.js")));
+        // Should include config file in paths
+        assert!(paths.iter().any(|p| p.ends_with("jest.config.js")));
         // Should not include npm package
-        assert!(!paths.iter().any(|p| p.contains("babel-jest")));
+        assert!(!paths.iter().any(|p| p.to_string_lossy().contains("babel-jest")));
     }
 
     #[test]
@@ -890,20 +836,17 @@ module.exports = {
 
         // No jest.config.js, use default patterns
 
-        // Create test files matching default patterns
-        let tests_dir = temp.path().join("__tests__");
-        fs::create_dir(&tests_dir).unwrap();
-        fs::write(tests_dir.join("app.test.js"), "test('works', () => {})").unwrap();
-
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("utils.spec.ts"), "test('works', () => {})").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let patterns = entries.get_patterns();
 
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
-        assert!(paths.iter().any(|p| p.ends_with("app.test.js")));
-        assert!(paths.iter().any(|p| p.ends_with("utils.spec.ts")));
+        // Should return default test patterns
+        assert!(!patterns.is_empty());
+        // Should include __tests__ pattern
+        assert!(patterns.iter().any(|p| p.pattern.contains("__tests__")));
+        // Should include .spec patterns
+        assert!(patterns.iter().any(|p| p.pattern.contains(".spec.")));
+        // Should include .test patterns
+        assert!(patterns.iter().any(|p| p.pattern.contains(".test.")));
     }
 
     #[test]
@@ -984,8 +927,12 @@ module.exports = {
         fs::write(temp.path().join("jest.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        // Config file should be in paths
         assert!(paths.iter().any(|p| p.ends_with("jest.config.js")));
+        // Should also have default test patterns since config is empty
+        assert!(!patterns.is_empty());
     }
 }

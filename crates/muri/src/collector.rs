@@ -1,3 +1,4 @@
+use crate::plugin::EntryPattern;
 use crate::types::DEFAULT_EXTENSIONS;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
@@ -11,11 +12,18 @@ pub struct ProjectIndex {
     pub project_files: FxHashSet<PathBuf>,
 }
 
+/// A compiled plugin pattern with its resolved base directory
+struct CompiledPluginPattern {
+    matcher: GlobSet,
+    base: PathBuf,
+}
+
 /// Precompiled glob matchers for efficient file matching
 struct CompiledMatchers {
     entry: GlobSet,
     project: GlobSet,
     ignore: GlobSet,
+    plugin_patterns: Vec<CompiledPluginPattern>,
 }
 
 impl CompiledMatchers {
@@ -23,11 +31,32 @@ impl CompiledMatchers {
         entry_patterns: &[String],
         project_patterns: &[String],
         ignore_patterns: &[String],
+        plugin_patterns: &[EntryPattern],
+        cwd: &Path,
     ) -> Self {
+        // Compile plugin patterns, grouping by base directory
+        let mut compiled_plugins = Vec::new();
+        for pattern in plugin_patterns {
+            let base = match &pattern.base {
+                Some(b) => cwd.join(b),
+                None => cwd.to_path_buf(),
+            };
+
+            // Skip if base doesn't exist
+            let canonical_base = match base.canonicalize() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+
+            let matcher = compile_globset(std::slice::from_ref(&pattern.pattern));
+            compiled_plugins.push(CompiledPluginPattern { matcher, base: canonical_base });
+        }
+
         Self {
             entry: compile_globset(entry_patterns),
             project: compile_globset(project_patterns),
             ignore: compile_globset(ignore_patterns),
+            plugin_patterns: compiled_plugins,
         }
     }
 }
@@ -87,10 +116,17 @@ impl Collector {
         entry_patterns: &[String],
         project_patterns: &[String],
         ignore_patterns: &[String],
+        plugin_patterns: &[EntryPattern],
     ) -> Self {
         Self {
             cwd: cwd.to_path_buf(),
-            matchers: CompiledMatchers::new(entry_patterns, project_patterns, ignore_patterns),
+            matchers: CompiledMatchers::new(
+                entry_patterns,
+                project_patterns,
+                ignore_patterns,
+                plugin_patterns,
+                cwd,
+            ),
         }
     }
 
@@ -141,15 +177,32 @@ impl Collector {
             // Check if file matches entry patterns
             let is_entry = self.matchers.entry.is_match(&*relative_str);
 
+            // Check if file matches any plugin patterns
+            let is_plugin_entry = self.check_plugin_patterns(&canonical);
+
             if is_project {
                 project_files.insert(canonical.clone());
             }
 
-            if is_entry {
+            if is_entry || is_plugin_entry {
                 entry_files.insert(canonical);
             }
         }
 
         ProjectIndex { entry_files, project_files }
+    }
+
+    /// Check if a file matches any plugin pattern
+    fn check_plugin_patterns(&self, canonical_path: &Path) -> bool {
+        for compiled in &self.matchers.plugin_patterns {
+            // Check if path is under this pattern's base
+            if let Ok(relative) = canonical_path.strip_prefix(&compiled.base) {
+                let relative_str = relative.to_string_lossy();
+                if compiled.matcher.is_match(&*relative_str) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }

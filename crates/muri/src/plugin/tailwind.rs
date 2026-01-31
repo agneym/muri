@@ -1,4 +1,4 @@
-use super::{Plugin, PluginError};
+use super::{Plugin, PluginEntries, PluginError};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -268,7 +268,7 @@ impl Plugin for TailwindPlugin {
         dependencies.contains("tailwindcss")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         let mut entries = Vec::new();
 
         for config_path in self.find_config_files(cwd) {
@@ -288,7 +288,7 @@ impl Plugin for TailwindPlugin {
             }
         }
 
-        Ok(entries)
+        Ok(PluginEntries::paths(entries))
     }
 }
 
@@ -332,8 +332,9 @@ module.exports = {
         fs::write(temp.path().join("tailwind.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("tailwind.config.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("tailwind.config.js"));
     }
 
     #[test]
@@ -359,9 +360,10 @@ module.exports = {
         fs::write(temp.path().join("tailwind.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let entry_paths = entries.get_paths();
         // Should include config file and local plugin (not npm package)
-        assert_eq!(entries.len(), 2);
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        assert_eq!(entry_paths.len(), 2);
+        let paths: Vec<_> = entry_paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
         assert!(paths.iter().any(|p| p.ends_with("tailwind.config.js")));
         assert!(paths.iter().any(|p| p.ends_with("custom.js")));
     }
@@ -388,8 +390,9 @@ module.exports = {
         fs::write(temp.path().join("tailwind.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let entry_paths = entries.get_paths();
+        assert_eq!(entry_paths.len(), 2);
+        let paths: Vec<_> = entry_paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
         assert!(paths.iter().any(|p| p.ends_with("base.js")));
     }
 
@@ -413,8 +416,9 @@ module.exports = {
         fs::write(temp.path().join("tailwind.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let entry_paths = entries.get_paths();
+        assert_eq!(entry_paths.len(), 2);
+        let paths: Vec<_> = entry_paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
         assert!(paths.iter().any(|p| p.ends_with("theme.js")));
     }
 
@@ -436,9 +440,10 @@ module.exports = {
         fs::write(temp.path().join("tailwind.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let entry_paths = entries.get_paths();
         // Should only include the config file, not npm packages
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("tailwind.config.js"));
+        assert_eq!(entry_paths.len(), 1);
+        assert!(entry_paths[0].ends_with("tailwind.config.js"));
     }
 
     #[test]
@@ -461,8 +466,9 @@ export default {
         fs::write(temp.path().join("tailwind.config.mjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let entry_paths = entries.get_paths();
+        assert_eq!(entry_paths.len(), 2);
+        let paths: Vec<_> = entry_paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
         assert!(paths.iter().any(|p| p.ends_with("tailwind.config.mjs")));
         assert!(paths.iter().any(|p| p.ends_with("theme.mjs")));
     }
@@ -489,8 +495,9 @@ module.exports = {
         fs::write(temp.path().join("tailwind.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let entry_paths = entries.get_paths();
+        assert_eq!(entry_paths.len(), 2);
+        let paths: Vec<_> = entry_paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
         assert!(paths.iter().any(|p| p.ends_with("index.js")));
     }
 
@@ -511,8 +518,9 @@ module.exports = {
         fs::write(config_dir.join("tailwind.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].to_string_lossy().contains("config/tailwind.config.js"));
+        let entry_paths = entries.get_paths();
+        assert_eq!(entry_paths.len(), 1);
+        assert!(entry_paths[0].to_string_lossy().contains("config/tailwind.config.js"));
     }
 
     #[test]

@@ -1,5 +1,4 @@
-use super::{Plugin, PluginError};
-use fast_glob::glob_match;
+use super::{EntryPattern, Plugin, PluginEntries, PluginError};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -255,48 +254,47 @@ impl StorybookPlugin {
         }
     }
 
-    /// Expand glob patterns relative to the .storybook directory
-    fn expand_patterns(
-        &self,
-        patterns: &[String],
-        cwd: &Path,
-    ) -> Result<Vec<PathBuf>, PluginError> {
+    /// Convert raw patterns from Storybook config to EntryPatterns.
+    ///
+    /// Handles patterns like:
+    /// - "../src/**/*.stories.tsx" -> EntryPattern { pattern: "**/*.stories.tsx", base: Some("src") }
+    /// - "./components/**/*.stories.tsx" -> EntryPattern { pattern: "**/*.stories.tsx", base: Some(".storybook/components") }
+    /// - "**/*.stories.tsx" -> EntryPattern { pattern: "**/*.stories.tsx", base: None }
+    fn patterns_to_entry_patterns(&self, patterns: &[String], cwd: &Path) -> Vec<EntryPattern> {
         let storybook_dir = cwd.join(".storybook");
         let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-        let mut entries = Vec::new();
+        let mut entry_patterns = Vec::new();
 
         for pattern in patterns {
+            // Convert Storybook's @() syntax to glob {} syntax first
+            let glob_pattern = convert_storybook_glob(pattern);
+
             // Resolve base directory relative to .storybook directory (where main.js is)
-            // We need to separate the directory path from the glob pattern because:
-            // 1. Directory paths may contain ".." which needs canonicalization
-            // 2. Glob patterns contain wildcards that can't be canonicalized
-            let full_pattern = if pattern.starts_with("../") || pattern.starts_with("./") {
-                storybook_dir.join(pattern)
+            let full_pattern = if glob_pattern.starts_with("../") || glob_pattern.starts_with("./")
+            {
+                storybook_dir.join(&glob_pattern)
             } else {
-                cwd.join(pattern)
+                cwd.join(&glob_pattern)
             };
 
-            let pattern_str = full_pattern.to_string_lossy();
-
-            // Convert Storybook's @() syntax to glob {} syntax
-            let glob_pattern = convert_storybook_glob(&pattern_str);
+            let pattern_str = full_pattern.to_string_lossy().to_string();
 
             // Find where glob special characters start to split base dir from pattern
             let glob_chars = ['*', '{', '[', '?'];
-            let glob_start = glob_pattern.find(|c| glob_chars.contains(&c));
+            let glob_start = pattern_str.find(|c| glob_chars.contains(&c));
 
             let (base_dir, glob_suffix) = if let Some(idx) = glob_start {
                 // Find the last path separator before the glob starts
-                let before_glob = &glob_pattern[..idx];
+                let before_glob = &pattern_str[..idx];
                 let last_sep = before_glob.rfind('/').unwrap_or(0);
-                let base = PathBuf::from(&glob_pattern[..last_sep]);
-                let suffix = &glob_pattern[last_sep..];
+                let base = PathBuf::from(&pattern_str[..last_sep]);
+                let suffix = &pattern_str[last_sep..];
                 // Remove leading slash from suffix if present
                 let suffix = suffix.strip_prefix('/').unwrap_or(suffix);
                 (base, suffix.to_string())
             } else {
-                // No glob chars, treat entire path as base
-                (PathBuf::from(&*glob_pattern), String::new())
+                // No glob chars, skip (we only handle patterns)
+                continue;
             };
 
             // Canonicalize the base directory to resolve ".." components
@@ -310,42 +308,17 @@ impl StorybookPlugin {
                 continue;
             }
 
-            if glob_suffix.is_empty() {
-                // No glob pattern, just add the directory/file if it exists
-                if canonical_base.exists() {
-                    entries.push(canonical_base);
-                }
-                continue;
-            }
+            // Create relative base from cwd
+            let relative_base = canonical_base
+                .strip_prefix(&cwd_canonical)
+                .ok()
+                .map(|p| p.to_path_buf())
+                .filter(|p| !p.as_os_str().is_empty());
 
-            // Walk directory and match files using fast-glob (supports brace expansion)
-            Self::walk_and_match(&canonical_base, &canonical_base, &glob_suffix, &mut entries);
+            entry_patterns.push(EntryPattern { pattern: glob_suffix, base: relative_base });
         }
 
-        Ok(entries)
-    }
-
-    /// Recursively walk directory and collect files matching the glob pattern
-    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut Vec<PathBuf>) {
-        let read_dir = match std::fs::read_dir(dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-
-        for entry in read_dir.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_dir() {
-                Self::walk_and_match(&path, base, pattern, entries);
-            } else if path.is_file() {
-                // Match against relative path from base using fast-glob
-                if let Ok(relative) = path.strip_prefix(base) {
-                    let relative_str = relative.to_string_lossy();
-                    if glob_match(pattern, relative_str.as_ref()) {
-                        entries.push(path);
-                    }
-                }
-            }
-        }
+        entry_patterns
     }
 
     /// Default story patterns when config parsing fails
@@ -379,20 +352,27 @@ impl Plugin for StorybookPlugin {
         dependencies.iter().any(|d| d.starts_with("@storybook/") || d == "storybook")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         // Try to find and parse config file
-        if let Some(config_path) = self.find_config_file(cwd) {
+        let patterns = if let Some(config_path) = self.find_config_file(cwd) {
             if let Ok(patterns) = self.parse_config(&config_path) {
                 if !patterns.is_empty() {
-                    return self.expand_patterns(&patterns, cwd);
+                    patterns
+                } else {
+                    // Fall back to default patterns
+                    Self::default_patterns().iter().map(|s| s.to_string()).collect()
                 }
+            } else {
+                // Fall back to default patterns
+                Self::default_patterns().iter().map(|s| s.to_string()).collect()
             }
-        }
+        } else {
+            // Fall back to default patterns if config not found
+            Self::default_patterns().iter().map(|s| s.to_string()).collect()
+        };
 
-        // Fall back to default patterns if config not found or parsing failed
-        let default_patterns: Vec<String> =
-            Self::default_patterns().iter().map(|s| s.to_string()).collect();
-        self.expand_patterns(&default_patterns, cwd)
+        let entry_patterns = self.patterns_to_entry_patterns(&patterns, cwd);
+        Ok(PluginEntries::patterns(entry_patterns))
     }
 }
 
@@ -573,16 +553,16 @@ module.exports = {
         let src_dir = temp.path().join("src");
         fs::create_dir(&src_dir).unwrap();
         fs::write(src_dir.join("Button.stories.tsx"), "export default {}").unwrap();
-        fs::write(src_dir.join("Card.stories.tsx"), "export default {}").unwrap();
-        fs::write(src_dir.join("utils.ts"), "export const foo = 1").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"Button.stories.tsx".to_string()));
-        assert!(filenames.contains(&"Card.stories.tsx".to_string()));
+        // Should have story patterns
+        assert!(!patterns.is_empty());
+        // Check pattern points to src directory (base should be "src")
+        assert!(patterns.iter().any(|p| {
+            p.base.as_ref().map(|b| b.to_string_lossy().contains("src")).unwrap_or(false)
+        }));
     }
 
     #[test]
@@ -591,12 +571,11 @@ module.exports = {
         let temp = tempdir().unwrap();
 
         // No .storybook directory, should use default patterns
-        let src_dir = temp.path().join("src");
-        fs::create_dir(&src_dir).unwrap();
-        fs::write(src_dir.join("Button.stories.tsx"), "export default {}").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
+        let patterns = entries.get_patterns();
+
+        // Should have default patterns
+        assert!(!patterns.is_empty());
     }
 
     #[test]

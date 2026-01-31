@@ -11,7 +11,7 @@ pub mod types;
 
 use std::sync::Arc;
 
-pub use plugin::PluginRegistry;
+pub use plugin::{EntryPattern, PluginEntries, PluginRegistry};
 pub use reporter::Report;
 pub use types::{
     DEFAULT_EXTENSIONS, FOREIGN_FILE_EXTENSIONS, FileConfig, MuriConfig, MuriError, PluginConfig,
@@ -185,19 +185,20 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     // Detect dependencies for plugins
     let deps = detect_dependencies(&cwd);
 
-    // Single walk to collect both entry and project files
-    let collector = Collector::new(&cwd, &config.entry, &config.project, &config.ignore);
+    // Create plugin registry and collect patterns and paths in a single pass
+    let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
+    let (plugin_patterns, plugin_paths) = plugin_registry.collect_all(&cwd);
+
+    // Single walk to collect both entry and project files, including plugin patterns
+    let collector =
+        Collector::new(&cwd, &config.entry, &config.project, &config.ignore, &plugin_patterns);
     let mut index = collector.collect();
 
-    // Run plugins to discover additional entry points
-    let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
-    let plugin_entries = plugin_registry.detect_all_entries(&cwd);
-
-    // Merge plugin-discovered entries into index.
+    // Merge plugin-discovered paths into index.
     // Plugin entries (like config files) may be outside the project directory,
     // but we still need to trace their imports to mark project files as reachable.
-    for entry in plugin_entries {
-        index.entry_files.insert(entry);
+    for path in plugin_paths {
+        index.entry_files.insert(path);
     }
 
     if index.entry_files.is_empty() {
@@ -224,19 +225,20 @@ pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf
     // Detect dependencies for plugins
     let deps = detect_dependencies(&cwd);
 
-    // Single walk to collect both entry and project files
-    let collector = Collector::new(&cwd, &config.entry, &config.project, &config.ignore);
+    // Create plugin registry and collect patterns and paths in a single pass
+    let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
+    let (plugin_patterns, plugin_paths) = plugin_registry.collect_all(&cwd);
+
+    // Single walk to collect both entry and project files, including plugin patterns
+    let collector =
+        Collector::new(&cwd, &config.entry, &config.project, &config.ignore, &plugin_patterns);
     let mut index = collector.collect();
 
-    // Run plugins to discover additional entry points
-    let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
-    let plugin_entries = plugin_registry.detect_all_entries(&cwd);
-
-    // Merge plugin-discovered entries into index.
+    // Merge plugin-discovered paths into index.
     // Plugin entries (like config files) may be outside the project directory,
     // but we still need to trace their imports to mark project files as reachable.
-    for entry in plugin_entries {
-        index.entry_files.insert(entry);
+    for path in plugin_paths {
+        index.entry_files.insert(path);
     }
 
     if index.entry_files.is_empty() {

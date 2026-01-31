@@ -1,4 +1,4 @@
-use super::{Plugin, PluginError};
+use super::{Plugin, PluginEntries, PluginError};
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -69,11 +69,11 @@ impl Plugin for PostcssPlugin {
         dependencies.contains("postcss") || dependencies.contains("postcss-cli")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         // Simply return config files as entry points.
         // The normal import/require tracing will discover any local dependencies
         // (like tailwind.config.js, custom plugins, etc.)
-        Ok(self.find_config_files(cwd))
+        Ok(PluginEntries::paths(self.find_config_files(cwd)))
     }
 }
 
@@ -128,8 +128,9 @@ module.exports = {
         fs::write(temp.path().join("postcss.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("postcss.config.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("postcss.config.js"));
     }
 
     #[test]
@@ -147,8 +148,9 @@ export default {
         fs::write(temp.path().join("postcss.config.mjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("postcss.config.mjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("postcss.config.mjs"));
     }
 
     #[test]
@@ -164,8 +166,9 @@ module.exports = {
         fs::write(temp.path().join(".postcssrc.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".postcssrc.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".postcssrc.js"));
     }
 
     #[test]
@@ -187,6 +190,7 @@ module.exports = {
         fs::write(temp.path().join(".postcssrc.json"), "{}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
     }
 }

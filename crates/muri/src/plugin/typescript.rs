@@ -1,4 +1,4 @@
-use super::{Plugin, PluginError};
+use super::{Plugin, PluginEntries, PluginError};
 use fast_glob::glob_match;
 use rustc_hash::FxHashSet;
 use serde_json::Value;
@@ -213,7 +213,7 @@ impl Plugin for TypescriptPlugin {
         dependencies.contains("typescript")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         let mut entries = FxHashSet::default();
         let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
 
@@ -244,7 +244,7 @@ impl Plugin for TypescriptPlugin {
             }
         }
 
-        Ok(entries.into_iter().collect())
+        Ok(PluginEntries::paths(entries.into_iter().collect()))
     }
 }
 
@@ -287,8 +287,9 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("tsconfig.json"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("tsconfig.json"));
     }
 
     #[test]
@@ -304,8 +305,9 @@ mod tests {
         fs::write(temp.path().join("tsconfig.build.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("tsconfig.build.json"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("tsconfig.build.json"));
     }
 
     #[test]
@@ -319,10 +321,11 @@ mod tests {
         fs::write(temp.path().join("tsconfig.test.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 3);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 3);
 
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert!(filenames.contains(&"tsconfig.json".to_string()));
         assert!(filenames.contains(&"tsconfig.build.json".to_string()));
         assert!(filenames.contains(&"tsconfig.test.json".to_string()));
@@ -352,10 +355,11 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 3); // tsconfig.json + 2 files
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 3); // tsconfig.json + 2 files
 
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert!(filenames.contains(&"tsconfig.json".to_string()));
         assert!(filenames.contains(&"index.ts".to_string()));
         assert!(filenames.contains(&"utils.ts".to_string()));
@@ -384,10 +388,11 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
 
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert!(filenames.contains(&"tsconfig.json".to_string()));
         assert!(filenames.contains(&"tsconfig.base.json".to_string()));
     }
@@ -408,10 +413,11 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
 
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert!(filenames.contains(&"tsconfig.base.json".to_string()));
     }
 
@@ -432,10 +438,11 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 3);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 3);
 
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert!(filenames.contains(&"tsconfig.json".to_string()));
         assert!(filenames.contains(&"tsconfig.base.json".to_string()));
         assert!(filenames.contains(&"tsconfig.strict.json".to_string()));
@@ -458,9 +465,10 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let entry_paths = entries.get_paths();
+        assert_eq!(entry_paths.len(), 2);
 
-        let paths: Vec<_> = entries.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let paths: Vec<_> = entry_paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
         assert!(paths.iter().any(|p| p.ends_with("tsconfig.json")));
         assert!(paths.iter().any(|p| p.ends_with("base.json")));
     }
@@ -477,9 +485,10 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
         // Should only include tsconfig.json, not the npm package
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("tsconfig.json"));
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("tsconfig.json"));
     }
 
     #[test]
@@ -503,10 +512,11 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
 
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
         assert!(filenames.contains(&"tsconfig.json".to_string()));
         assert!(filenames.contains(&"index.ts".to_string()));
     }
@@ -535,9 +545,10 @@ mod tests {
         fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
+        let paths = entries.get_paths();
         // Should only include tsconfig.json, not the missing files
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("tsconfig.json"));
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("tsconfig.json"));
     }
 
     #[test]

@@ -1,5 +1,4 @@
-use super::{Plugin, PluginError};
-use fast_glob::glob_match;
+use super::{EntryPattern, Plugin, PluginEntries, PluginError};
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -50,47 +49,9 @@ impl CypressPlugin {
         ]
     }
 
-    /// Expand glob patterns relative to the project directory
-    fn expand_patterns(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
-        let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-        let mut entries = FxHashSet::default();
-
-        for pattern in Self::default_patterns() {
-            Self::walk_and_match(&cwd_canonical, &cwd_canonical, pattern, &mut entries);
-        }
-
-        Ok(entries.into_iter().collect())
-    }
-
-    /// Recursively walk directory and collect files matching the glob pattern
-    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut FxHashSet<PathBuf>) {
-        let read_dir = match std::fs::read_dir(dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-
-        for entry in read_dir.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            let file_name = path.file_name().map(|n| n.to_string_lossy());
-
-            // Skip node_modules and hidden directories
-            if let Some(name) = &file_name {
-                if name == "node_modules" || name.starts_with('.') {
-                    continue;
-                }
-            }
-
-            if path.is_dir() {
-                Self::walk_and_match(&path, base, pattern, entries);
-            } else if path.is_file() {
-                if let Ok(relative) = path.strip_prefix(base) {
-                    let relative_str = relative.to_string_lossy();
-                    if glob_match(pattern, relative_str.as_ref()) {
-                        entries.insert(path);
-                    }
-                }
-            }
-        }
+    /// Convert default patterns to EntryPatterns
+    fn patterns_to_entry_patterns() -> Vec<EntryPattern> {
+        Self::default_patterns().iter().map(|p| EntryPattern::new(*p)).collect()
     }
 }
 
@@ -109,21 +70,19 @@ impl Plugin for CypressPlugin {
         dependencies.contains("cypress")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
-        let mut entries = Vec::new();
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
+        let mut paths = Vec::new();
 
-        // Add config file as entry point if found
+        // Add config file as entry point (path, not pattern)
         if let Some(config_path) = self.find_config_file(cwd) {
             if let Ok(canonical) = config_path.canonicalize() {
-                entries.push(canonical);
+                paths.push(canonical);
             }
         }
 
-        // Find all test and support files using default patterns
-        let test_files = self.expand_patterns(cwd)?;
-        entries.extend(test_files);
-
-        Ok(entries)
+        // Return test patterns + config path
+        let entry_patterns = Self::patterns_to_entry_patterns();
+        Ok(PluginEntries::mixed(entry_patterns, paths))
     }
 }
 
@@ -225,8 +184,15 @@ mod tests {
         fs::write(temp.path().join("cypress.config.ts"), "export default {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("cypress.config.ts"));
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
+
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.ts"));
+
+        // Should have test patterns (the default patterns)
+        assert!(!patterns.is_empty());
     }
 
     #[test]
@@ -237,23 +203,26 @@ mod tests {
         // Create cypress config
         fs::write(temp.path().join("cypress.config.ts"), "export default {}").unwrap();
 
-        // Create e2e directory structure
+        // Create e2e directory structure (not needed for pattern-based matching, but kept for context)
         let e2e_dir = temp.path().join("cypress").join("e2e");
         fs::create_dir_all(&e2e_dir).unwrap();
         fs::write(e2e_dir.join("login.cy.ts"), "describe('login', () => {})").unwrap();
         fs::write(e2e_dir.join("signup.spec.ts"), "describe('signup', () => {})").unwrap();
-        // Non-test file should not be included
+        // Non-test file should not match patterns
         fs::write(e2e_dir.join("utils.ts"), "export const foo = 1").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 3); // config + 2 test files
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"cypress.config.ts".to_string()));
-        assert!(filenames.contains(&"login.cy.ts".to_string()));
-        assert!(filenames.contains(&"signup.spec.ts".to_string()));
-        assert!(!filenames.contains(&"utils.ts".to_string()));
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.ts"));
+
+        // Should have e2e test patterns
+        let pattern_strs: Vec<&str> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.cy.ts"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.spec.ts"));
     }
 
     #[test]
@@ -264,19 +233,24 @@ mod tests {
         // Create cypress config
         fs::write(temp.path().join("cypress.config.js"), "module.exports = {}").unwrap();
 
-        // Create support directory structure
+        // Create support directory structure (not needed for pattern-based matching, but kept for context)
         let support_dir = temp.path().join("cypress").join("support");
         fs::create_dir_all(&support_dir).unwrap();
         fs::write(support_dir.join("commands.ts"), "Cypress.Commands.add()").unwrap();
         fs::write(support_dir.join("e2e.ts"), "import './commands'").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 3); // config + 2 support files
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"commands.ts".to_string()));
-        assert!(filenames.contains(&"e2e.ts".to_string()));
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.js"));
+
+        // Should have support file patterns
+        let pattern_strs: Vec<&str> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"cypress/support/**/*.ts"));
+        assert!(pattern_strs.contains(&"cypress/support/**/*.js"));
     }
 
     #[test]
@@ -287,19 +261,24 @@ mod tests {
         // Create cypress config
         fs::write(temp.path().join("cypress.config.ts"), "export default {}").unwrap();
 
-        // Create component directory structure
+        // Create component directory structure (not needed for pattern-based matching, but kept for context)
         let component_dir = temp.path().join("cypress").join("component");
         fs::create_dir_all(&component_dir).unwrap();
         fs::write(component_dir.join("Button.cy.tsx"), "describe('Button', () => {})").unwrap();
         fs::write(component_dir.join("Card.spec.jsx"), "describe('Card', () => {})").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 3); // config + 2 component tests
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"Button.cy.tsx".to_string()));
-        assert!(filenames.contains(&"Card.spec.jsx".to_string()));
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.ts"));
+
+        // Should have component test patterns
+        let pattern_strs: Vec<&str> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"cypress/component/**/*.cy.tsx"));
+        assert!(pattern_strs.contains(&"cypress/component/**/*.spec.jsx"));
     }
 
     #[test]
@@ -310,17 +289,22 @@ mod tests {
         // Create cypress config
         fs::write(temp.path().join("cypress.config.ts"), "export default {}").unwrap();
 
-        // Create nested e2e directory structure
+        // Create nested e2e directory structure (not needed for pattern-based matching, but kept for context)
         let nested_dir = temp.path().join("cypress").join("e2e").join("auth").join("flows");
         fs::create_dir_all(&nested_dir).unwrap();
         fs::write(nested_dir.join("oauth.cy.ts"), "describe('oauth', () => {})").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2); // config + nested test
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"oauth.cy.ts".to_string()));
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.ts"));
+
+        // Should have patterns that match nested directories via **
+        let pattern_strs: Vec<&str> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.cy.ts"));
     }
 
     #[test]
@@ -331,20 +315,26 @@ mod tests {
         // Create cypress config
         fs::write(temp.path().join("cypress.config.js"), "module.exports = {}").unwrap();
 
-        // Create e2e tests with different extensions
-        let e2e_dir = temp.path().join("cypress").join("e2e");
-        fs::create_dir_all(&e2e_dir).unwrap();
-        fs::write(e2e_dir.join("test1.cy.js"), "").unwrap();
-        fs::write(e2e_dir.join("test2.cy.jsx"), "").unwrap();
-        fs::write(e2e_dir.join("test3.cy.ts"), "").unwrap();
-        fs::write(e2e_dir.join("test4.cy.tsx"), "").unwrap();
-        fs::write(e2e_dir.join("test5.spec.js"), "").unwrap();
-        fs::write(e2e_dir.join("test6.spec.jsx"), "").unwrap();
-        fs::write(e2e_dir.join("test7.spec.ts"), "").unwrap();
-        fs::write(e2e_dir.join("test8.spec.tsx"), "").unwrap();
-
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 9); // config + 8 test files
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
+
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.js"));
+
+        // Should have patterns for all supported extensions
+        let pattern_strs: Vec<&str> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+
+        // Check e2e patterns for all extensions
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.cy.js"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.cy.jsx"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.cy.ts"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.cy.tsx"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.spec.js"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.spec.jsx"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.spec.ts"));
+        assert!(pattern_strs.contains(&"cypress/e2e/**/*.spec.tsx"));
     }
 
     #[test]
@@ -356,7 +346,15 @@ mod tests {
         fs::write(temp.path().join("cypress.config.ts"), "export default {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1); // Just the config file
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
+
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.ts"));
+
+        // Should still have test patterns (they just won't match anything)
+        assert!(!patterns.is_empty());
     }
 
     #[test]
@@ -365,7 +363,14 @@ mod tests {
         let temp = tempdir().unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert!(entries.is_empty());
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
+
+        // No config found, so no paths
+        assert!(paths.is_empty());
+
+        // But patterns are always returned
+        assert!(!patterns.is_empty());
     }
 
     #[test]
@@ -381,7 +386,7 @@ mod tests {
         // Create cypress config
         fs::write(temp.path().join("cypress.config.ts"), "export default {}").unwrap();
 
-        // Create e2e, support, and component directories
+        // Create e2e, support, and component directories (not needed for pattern-based matching, but kept for context)
         let e2e_dir = temp.path().join("cypress").join("e2e");
         let support_dir = temp.path().join("cypress").join("support");
         let component_dir = temp.path().join("cypress").join("component");
@@ -395,13 +400,17 @@ mod tests {
         fs::write(component_dir.join("Widget.cy.tsx"), "").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 4); // config + e2e + support + component
+        let paths = entries.get_paths();
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"cypress.config.ts".to_string()));
-        assert!(filenames.contains(&"app.cy.ts".to_string()));
-        assert!(filenames.contains(&"commands.ts".to_string()));
-        assert!(filenames.contains(&"Widget.cy.tsx".to_string()));
+        // Should have config path
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("cypress.config.ts"));
+
+        // Should have patterns for all test types (e2e, support, component)
+        let pattern_strs: Vec<&str> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.iter().any(|p| p.contains("cypress/e2e/")));
+        assert!(pattern_strs.iter().any(|p| p.contains("cypress/support/")));
+        assert!(pattern_strs.iter().any(|p| p.contains("cypress/component/")));
     }
 }

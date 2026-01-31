@@ -1,4 +1,4 @@
-use super::{Plugin, PluginError};
+use super::{Plugin, PluginEntries, PluginError};
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -63,11 +63,11 @@ impl Plugin for LintStagedPlugin {
         dependencies.contains("lint-staged")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         // Simply return config files as entry points.
         // The normal import/require tracing will discover any local dependencies
         // (like custom scripts, shared configs, etc.)
-        Ok(self.find_config_files(cwd))
+        Ok(PluginEntries::paths(self.find_config_files(cwd)))
     }
 }
 
@@ -119,8 +119,9 @@ module.exports = {
         fs::write(temp.path().join("lint-staged.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("lint-staged.config.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("lint-staged.config.js"));
     }
 
     #[test]
@@ -136,8 +137,9 @@ export default {
         fs::write(temp.path().join("lint-staged.config.mjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("lint-staged.config.mjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("lint-staged.config.mjs"));
     }
 
     #[test]
@@ -153,8 +155,9 @@ module.exports = {
         fs::write(temp.path().join("lint-staged.config.cjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("lint-staged.config.cjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("lint-staged.config.cjs"));
     }
 
     #[test]
@@ -166,8 +169,9 @@ module.exports = {
         fs::write(temp.path().join(".lintstagedrc"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".lintstagedrc"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".lintstagedrc"));
     }
 
     #[test]
@@ -183,8 +187,9 @@ module.exports = {
         fs::write(temp.path().join(".lintstagedrc.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".lintstagedrc.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".lintstagedrc.js"));
     }
 
     #[test]
@@ -196,8 +201,9 @@ module.exports = {
         fs::write(temp.path().join(".lintstagedrc.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".lintstagedrc.json"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".lintstagedrc.json"));
     }
 
     #[test]
@@ -213,8 +219,9 @@ module.exports = {
         fs::write(temp.path().join(".lintstagedrc.yaml"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".lintstagedrc.yaml"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".lintstagedrc.yaml"));
     }
 
     #[test]
@@ -229,8 +236,9 @@ module.exports = {
         fs::write(temp.path().join(".lintstagedrc.yml"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".lintstagedrc.yml"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".lintstagedrc.yml"));
     }
 
     #[test]
@@ -252,7 +260,8 @@ module.exports = {
         fs::write(temp.path().join(".lintstagedrc.json"), "{}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
     }
 
     #[test]

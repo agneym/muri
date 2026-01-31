@@ -1,4 +1,4 @@
-use super::{Plugin, PluginError};
+use super::{Plugin, PluginEntries, PluginError};
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -63,11 +63,11 @@ impl Plugin for EslintPlugin {
         dependencies.contains("eslint")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         // Simply return config files as entry points.
         // The normal import/require tracing will discover any local dependencies
         // (like custom rules, plugins, shared configs, etc.)
-        Ok(self.find_config_files(cwd))
+        Ok(PluginEntries::paths(self.find_config_files(cwd)))
     }
 }
 
@@ -123,8 +123,9 @@ export default [
         fs::write(temp.path().join("eslint.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("eslint.config.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("eslint.config.js"));
     }
 
     #[test]
@@ -144,8 +145,9 @@ export default [
         fs::write(temp.path().join("eslint.config.mjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("eslint.config.mjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("eslint.config.mjs"));
     }
 
     #[test]
@@ -169,8 +171,9 @@ export default config;
         fs::write(temp.path().join("eslint.config.ts"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("eslint.config.ts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("eslint.config.ts"));
     }
 
     #[test]
@@ -188,8 +191,9 @@ module.exports = {
         fs::write(temp.path().join(".eslintrc.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".eslintrc.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".eslintrc.js"));
     }
 
     #[test]
@@ -207,8 +211,9 @@ module.exports = {
         fs::write(temp.path().join(".eslintrc.json"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".eslintrc.json"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".eslintrc.json"));
     }
 
     #[test]
@@ -223,8 +228,9 @@ rules:
         fs::write(temp.path().join(".eslintrc.yaml"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".eslintrc.yaml"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".eslintrc.yaml"));
     }
 
     #[test]
@@ -239,8 +245,9 @@ rules:
         fs::write(temp.path().join(".eslintrc.yml"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".eslintrc.yml"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".eslintrc.yml"));
     }
 
     #[test]
@@ -258,8 +265,9 @@ rules:
         fs::write(temp.path().join(".eslintrc"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with(".eslintrc"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with(".eslintrc"));
     }
 
     #[test]
@@ -281,7 +289,8 @@ rules:
         fs::write(temp.path().join(".eslintrc.json"), "{}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
     }
 
     #[test]

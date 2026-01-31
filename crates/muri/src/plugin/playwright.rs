@@ -1,5 +1,4 @@
-use super::{Plugin, PluginError};
-use fast_glob::glob_match;
+use super::{EntryPattern, Plugin, PluginEntries, PluginError};
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -37,47 +36,9 @@ impl PlaywrightPlugin {
         ]
     }
 
-    /// Expand glob patterns relative to the project directory
-    fn expand_patterns(&self, patterns: &[&str], cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
-        let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-        let mut entries = FxHashSet::default();
-
-        for pattern in patterns {
-            Self::walk_and_match(&cwd_canonical, &cwd_canonical, pattern, &mut entries);
-        }
-
-        Ok(entries.into_iter().collect())
-    }
-
-    /// Recursively walk directory and collect files matching the glob pattern
-    fn walk_and_match(dir: &Path, base: &Path, pattern: &str, entries: &mut FxHashSet<PathBuf>) {
-        let read_dir = match std::fs::read_dir(dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-
-        for entry in read_dir.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            let file_name = path.file_name().map(|n| n.to_string_lossy());
-
-            // Skip node_modules and hidden directories
-            if let Some(name) = &file_name {
-                if name == "node_modules" || name.starts_with('.') {
-                    continue;
-                }
-            }
-
-            if path.is_dir() {
-                Self::walk_and_match(&path, base, pattern, entries);
-            } else if path.is_file() {
-                if let Ok(relative) = path.strip_prefix(base) {
-                    let relative_str = relative.to_string_lossy();
-                    if glob_match(pattern, relative_str.as_ref()) {
-                        entries.insert(path);
-                    }
-                }
-            }
-        }
+    /// Convert default patterns to EntryPatterns
+    fn patterns_to_entry_patterns() -> Vec<EntryPattern> {
+        Self::default_patterns().iter().map(|p| EntryPattern::new(*p)).collect()
     }
 }
 
@@ -96,21 +57,19 @@ impl Plugin for PlaywrightPlugin {
         dependencies.contains("@playwright/test")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
-        let mut entries = Vec::new();
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
+        let mut paths = Vec::new();
 
-        // Add config file as entry point if it exists
+        // Add config file as entry point (path, not pattern)
         if let Some(config_path) = self.find_config_file(cwd) {
             if let Ok(canonical) = config_path.canonicalize() {
-                entries.push(canonical);
+                paths.push(canonical);
             }
         }
 
-        // Find test files using default patterns
-        let test_files = self.expand_patterns(Self::default_patterns(), cwd)?;
-        entries.extend(test_files);
-
-        Ok(entries)
+        // Return test patterns + config path
+        let entry_patterns = Self::patterns_to_entry_patterns();
+        Ok(PluginEntries::mixed(entry_patterns, paths))
     }
 }
 
@@ -163,8 +122,9 @@ export default defineConfig({});
         fs::write(temp.path().join("playwright.config.ts"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("playwright.config.ts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("playwright.config.ts"));
     }
 
     #[test]
@@ -179,8 +139,9 @@ module.exports = {};
         fs::write(temp.path().join("playwright.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("playwright.config.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("playwright.config.js"));
     }
 
     #[test]
@@ -195,8 +156,9 @@ export default {};
         fs::write(temp.path().join("playwright.config.mjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("playwright.config.mjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("playwright.config.mjs"));
     }
 
     #[test]
@@ -204,7 +166,7 @@ export default {};
         let plugin = PlaywrightPlugin::new();
         let temp = tempdir().unwrap();
 
-        // Create tests directory with spec files
+        // Create tests directory with spec files (for verifying patterns would match them)
         let tests_dir = temp.path().join("tests");
         fs::create_dir(&tests_dir).unwrap();
         fs::write(tests_dir.join("login.spec.ts"), "test('login', async () => {});").unwrap();
@@ -212,13 +174,13 @@ export default {};
         fs::write(tests_dir.join("utils.ts"), "export const helper = () => {};").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"login.spec.ts".to_string()));
-        assert!(filenames.contains(&"signup.spec.ts".to_string()));
-        assert!(!filenames.contains(&"utils.ts".to_string()));
+        // Should have patterns for tests/**/*.spec.ts
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"tests/**/*.spec.ts"));
+        assert!(pattern_strs.contains(&"tests/**/*.spec.js"));
+        // utils.ts would not match because it doesn't have .spec. or .test. suffix
     }
 
     #[test]
@@ -233,12 +195,12 @@ export default {};
         fs::write(tests_dir.join("signup.test.js"), "test('signup', async () => {});").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"login.test.ts".to_string()));
-        assert!(filenames.contains(&"signup.test.js".to_string()));
+        // Should have patterns for tests/**/*.test.ts and tests/**/*.test.js
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"tests/**/*.test.ts"));
+        assert!(pattern_strs.contains(&"tests/**/*.test.js"));
     }
 
     #[test]
@@ -246,19 +208,19 @@ export default {};
         let plugin = PlaywrightPlugin::new();
         let temp = tempdir().unwrap();
 
-        // Create e2e directory with spec files
+        // Create e2e directory with spec files (for verifying patterns would match them)
         let e2e_dir = temp.path().join("e2e");
         fs::create_dir(&e2e_dir).unwrap();
         fs::write(e2e_dir.join("checkout.spec.ts"), "test('checkout', async () => {});").unwrap();
         fs::write(e2e_dir.join("cart.spec.js"), "test('cart', async () => {});").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"checkout.spec.ts".to_string()));
-        assert!(filenames.contains(&"cart.spec.js".to_string()));
+        // Should have patterns for e2e/**/*.spec.ts and e2e/**/*.spec.js
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"e2e/**/*.spec.ts"));
+        assert!(pattern_strs.contains(&"e2e/**/*.spec.js"));
     }
 
     #[test]
@@ -266,19 +228,19 @@ export default {};
         let plugin = PlaywrightPlugin::new();
         let temp = tempdir().unwrap();
 
-        // Create e2e directory with test files
+        // Create e2e directory with test files (for verifying patterns would match them)
         let e2e_dir = temp.path().join("e2e");
         fs::create_dir(&e2e_dir).unwrap();
         fs::write(e2e_dir.join("checkout.test.ts"), "test('checkout', async () => {});").unwrap();
         fs::write(e2e_dir.join("cart.test.js"), "test('cart', async () => {});").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"checkout.test.ts".to_string()));
-        assert!(filenames.contains(&"cart.test.js".to_string()));
+        // Should have patterns for e2e/**/*.test.ts and e2e/**/*.test.js
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"e2e/**/*.test.ts"));
+        assert!(pattern_strs.contains(&"e2e/**/*.test.js"));
     }
 
     #[test]
@@ -286,7 +248,7 @@ export default {};
         let plugin = PlaywrightPlugin::new();
         let temp = tempdir().unwrap();
 
-        // Create nested directory structure
+        // Create nested directory structure (to verify the ** glob would match nested files)
         let tests_dir = temp.path().join("tests");
         let auth_dir = tests_dir.join("auth");
         let checkout_dir = tests_dir.join("checkout");
@@ -298,12 +260,11 @@ export default {};
             .unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let patterns = entries.get_patterns();
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"login.spec.ts".to_string()));
-        assert!(filenames.contains(&"payment.spec.ts".to_string()));
+        // The patterns use ** which matches nested directories
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"tests/**/*.spec.ts"));
     }
 
     #[test]
@@ -324,17 +285,21 @@ export default {};
         fs::write(e2e_dir.join("checkout.spec.ts"), "test('checkout', async () => {});").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 3);
 
-        let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
-        assert!(filenames.contains(&"playwright.config.ts".to_string()));
-        assert!(filenames.contains(&"login.spec.ts".to_string()));
-        assert!(filenames.contains(&"checkout.spec.ts".to_string()));
+        // Config file should be in paths
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("playwright.config.ts"));
+
+        // Test patterns should be in patterns
+        let patterns = entries.get_patterns();
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"tests/**/*.spec.ts"));
+        assert!(pattern_strs.contains(&"e2e/**/*.spec.ts"));
     }
 
     #[test]
-    fn test_no_entries_when_no_tests_or_config() {
+    fn test_no_config_file_still_returns_patterns() {
         let plugin = PlaywrightPlugin::new();
         let temp = tempdir().unwrap();
 
@@ -344,7 +309,14 @@ export default {};
         fs::write(src_dir.join("app.ts"), "export const app = {};").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert!(entries.is_empty());
+
+        // No config file means no paths
+        let paths = entries.get_paths();
+        assert!(paths.is_empty());
+
+        // But patterns are still returned (they just won't match any files)
+        let patterns = entries.get_patterns();
+        assert!(!patterns.is_empty());
     }
 
     #[test]

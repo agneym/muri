@@ -1,4 +1,4 @@
-use super::Plugin;
+use super::{EntryPattern, Plugin, PluginEntries};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -18,24 +18,40 @@ impl PluginRegistry {
         self.plugins.push(plugin);
     }
 
-    /// Discover all entry points from registered plugins
-    /// Errors from individual plugins are logged but don't fail the overall detection
-    pub fn detect_all_entries(&self, cwd: &Path) -> Vec<PathBuf> {
-        let mut all_entries = Vec::new();
+    /// Collect all patterns and paths from registered plugins in a single pass.
+    ///
+    /// Returns (patterns, paths) where:
+    /// - patterns: Glob patterns to match during the collector's filesystem walk
+    /// - paths: Already-resolved absolute paths (config files, etc.)
+    ///
+    /// This is more efficient than calling collect_patterns() and collect_paths()
+    /// separately, as it only calls detect_entries() once per plugin.
+    pub fn collect_all(&self, cwd: &Path) -> (Vec<EntryPattern>, Vec<PathBuf>) {
+        let mut all_patterns = Vec::new();
+        let mut all_paths = Vec::new();
 
         for plugin in &self.plugins {
             match plugin.detect_entries(cwd) {
-                Ok(entries) => {
-                    all_entries.extend(entries);
-                }
+                Ok(entries) => match entries {
+                    PluginEntries::Empty => {}
+                    PluginEntries::Patterns(patterns) => {
+                        all_patterns.extend(patterns);
+                    }
+                    PluginEntries::Paths(paths) => {
+                        all_paths.extend(paths);
+                    }
+                    PluginEntries::Mixed { patterns, paths } => {
+                        all_patterns.extend(patterns);
+                        all_paths.extend(paths);
+                    }
+                },
                 Err(e) => {
-                    // Log error but continue - plugins are best-effort
                     eprintln!("Warning: Plugin '{}' failed: {}", plugin.name(), e);
                 }
             }
         }
 
-        all_entries
+        (all_patterns, all_paths)
     }
 
     /// Get names of all registered plugins

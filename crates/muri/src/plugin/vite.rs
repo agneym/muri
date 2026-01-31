@@ -1,4 +1,4 @@
-use super::{Plugin, PluginError};
+use super::{Plugin, PluginEntries, PluginError};
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
 
@@ -57,11 +57,11 @@ impl Plugin for VitePlugin {
         dependencies.contains("vite")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         // Simply return config files as entry points.
         // The normal import/require tracing will discover any local dependencies
         // (like custom plugins, shared configs, etc.)
-        Ok(self.find_config_files(cwd))
+        Ok(PluginEntries::paths(self.find_config_files(cwd)))
     }
 }
 
@@ -115,8 +115,9 @@ export default defineConfig({
         fs::write(temp.path().join("vite.config.js"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("vite.config.js"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("vite.config.js"));
     }
 
     #[test]
@@ -134,8 +135,9 @@ export default defineConfig({
         fs::write(temp.path().join("vite.config.ts"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("vite.config.ts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("vite.config.ts"));
     }
 
     #[test]
@@ -153,8 +155,9 @@ export default defineConfig({
         fs::write(temp.path().join("vite.config.mjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("vite.config.mjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("vite.config.mjs"));
     }
 
     #[test]
@@ -172,8 +175,9 @@ module.exports = defineConfig({
         fs::write(temp.path().join("vite.config.cjs"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("vite.config.cjs"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("vite.config.cjs"));
     }
 
     #[test]
@@ -191,8 +195,9 @@ export default defineConfig({
         fs::write(temp.path().join("vite.config.mts"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("vite.config.mts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("vite.config.mts"));
     }
 
     #[test]
@@ -210,8 +215,9 @@ module.exports = defineConfig({
         fs::write(temp.path().join("vite.config.cts"), config_content).unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries[0].ends_with("vite.config.cts"));
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("vite.config.cts"));
     }
 
     #[test]
@@ -233,7 +239,8 @@ module.exports = defineConfig({
         fs::write(temp.path().join("vite.config.ts"), "export default {}").unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
     }
 
     #[test]

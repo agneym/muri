@@ -1,4 +1,4 @@
-use super::{Plugin, PluginError};
+use super::{Plugin, PluginEntries, PluginError};
 use regex::Regex;
 use rustc_hash::FxHashSet;
 use std::fs;
@@ -201,7 +201,7 @@ impl Plugin for HuskyPlugin {
         dependencies.contains("husky")
     }
 
-    fn detect_entries(&self, cwd: &Path) -> Result<Vec<PathBuf>, PluginError> {
+    fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
         let hook_files = self.find_hook_files(cwd);
         let mut entries = FxHashSet::default();
 
@@ -210,7 +210,7 @@ impl Plugin for HuskyPlugin {
             entries.extend(js_files);
         }
 
-        Ok(entries.into_iter().collect())
+        Ok(PluginEntries::paths(entries.into_iter().collect()))
     }
 }
 
@@ -490,10 +490,11 @@ node scripts/format.mjs
             .unwrap();
 
         let entries = plugin.detect_entries(temp.path()).unwrap();
-        assert_eq!(entries.len(), 2);
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
 
         let filenames: Vec<_> =
-            entries.iter().map(|p| p.file_name().unwrap().to_str().unwrap()).collect();
+            paths.iter().map(|p| p.file_name().unwrap().to_str().unwrap()).collect();
         assert!(filenames.contains(&"pre-commit-check.js"));
         assert!(filenames.contains(&"pre-push-check.ts"));
     }
