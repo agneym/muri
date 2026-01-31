@@ -1,6 +1,5 @@
 pub mod cli;
 pub mod collector;
-pub mod compiler;
 pub mod dependencies;
 pub mod graph;
 pub mod module_cache;
@@ -12,12 +11,10 @@ pub mod types;
 
 use std::sync::Arc;
 
-pub use compiler::CompilerRegistry;
 pub use plugin::PluginRegistry;
 pub use reporter::Report;
 pub use types::{
-    CompilerConfig, DEFAULT_EXTENSIONS, FOREIGN_FILE_EXTENSIONS, FileConfig, MuriConfig, MuriError,
-    PluginConfig,
+    DEFAULT_EXTENSIONS, FOREIGN_FILE_EXTENSIONS, FileConfig, MuriConfig, MuriError, PluginConfig,
 };
 
 use collector::Collector;
@@ -27,26 +24,6 @@ use module_cache::ModuleCache;
 use plugin::{Plugin, StorybookPlugin};
 use resolver::ModuleResolver;
 use rustc_hash::FxHashSet;
-
-/// Create a compiler registry with built-in compilers enabled based on detected dependencies
-/// and user configuration
-fn create_compiler_registry(
-    compiler_config: &types::CompilerConfig,
-    deps: &FxHashSet<String>,
-) -> CompilerRegistry {
-    let mut registry = CompilerRegistry::new();
-
-    // SCSS compiler: check config override, then fall back to auto-detection
-    let scss_enabled = compiler_config.scss.unwrap_or_else(|| {
-        deps.contains("sass") || deps.contains("sass-embedded") || deps.contains("node-sass")
-    });
-
-    if scss_enabled {
-        registry.register(Arc::new(compiler::ScssCompiler::new()));
-    }
-
-    registry
-}
 
 /// Create a plugin registry with built-in plugins enabled based on detected dependencies
 /// and user configuration
@@ -95,21 +72,11 @@ fn create_plugin_registry(
 pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
-    // Detect dependencies once for both compilers and plugins
+    // Detect dependencies for plugins
     let deps = detect_dependencies(&cwd);
 
-    // Setup compiler registry based on detected dependencies and user config
-    let registry = Arc::new(create_compiler_registry(&config.compilers, &deps));
-    let compiler_extensions: Vec<String> = registry.extensions().cloned().collect();
-
-    // Single walk to collect both entry and project files (with compiler extensions)
-    let collector = Collector::with_compiler_extensions(
-        &cwd,
-        &config.entry,
-        &config.project,
-        &config.ignore,
-        &compiler_extensions,
-    );
+    // Single walk to collect both entry and project files
+    let collector = Collector::new(&cwd, &config.entry, &config.project, &config.ignore);
     let mut index = collector.collect();
 
     // Run plugins to discover additional entry points
@@ -128,8 +95,8 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     }
 
     // Build graph and find unused (with shared module cache for parsing)
-    let resolver = Arc::new(ModuleResolver::with_compilers(&cwd, &registry));
-    let module_cache = Arc::new(ModuleCache::with_compilers(Arc::clone(&registry)));
+    let resolver = Arc::new(ModuleResolver::new(&cwd));
+    let module_cache = Arc::new(ModuleCache::new());
     let graph = DependencyGraph::new(index.project_files.clone(), resolver, module_cache);
     let unused = graph.find_unused(&index.entry_files.into_iter().collect::<Vec<_>>());
 
@@ -143,21 +110,11 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
 pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf>, MuriError> {
     let cwd = config.cwd.canonicalize()?;
 
-    // Detect dependencies once for both compilers and plugins
+    // Detect dependencies for plugins
     let deps = detect_dependencies(&cwd);
 
-    // Setup compiler registry based on detected dependencies and user config
-    let registry = Arc::new(create_compiler_registry(&config.compilers, &deps));
-    let compiler_extensions: Vec<String> = registry.extensions().cloned().collect();
-
-    // Single walk to collect both entry and project files (with compiler extensions)
-    let collector = Collector::with_compiler_extensions(
-        &cwd,
-        &config.entry,
-        &config.project,
-        &config.ignore,
-        &compiler_extensions,
-    );
+    // Single walk to collect both entry and project files
+    let collector = Collector::new(&cwd, &config.entry, &config.project, &config.ignore);
     let mut index = collector.collect();
 
     // Run plugins to discover additional entry points
@@ -175,8 +132,8 @@ pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf
         return Err(MuriError::NoEntryFiles(config.entry));
     }
 
-    let resolver = Arc::new(ModuleResolver::with_compilers(&cwd, &registry));
-    let module_cache = Arc::new(ModuleCache::with_compilers(Arc::clone(&registry)));
+    let resolver = Arc::new(ModuleResolver::new(&cwd));
+    let module_cache = Arc::new(ModuleCache::new());
     let graph = DependencyGraph::new(index.project_files, resolver, module_cache);
     let reachable = graph.find_reachable(&index.entry_files.into_iter().collect::<Vec<_>>());
 

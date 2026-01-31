@@ -27,7 +27,6 @@ Three Rust crates in a workspace:
 - `resolver.rs` - Module path resolution (path mapping, index files)
 - `graph.rs` - Dependency graph construction with parallel wave-based traversal
 - `module_cache.rs` - Caches parsed modules to avoid re-parsing
-- `compiler/` - Extensible system for non-JS/TS files (SCSS compiler included)
 - `plugin/` - Extensible system for entry point discovery from tool configs (Storybook plugin included)
 
 **`crates/muri-cli/`** - CLI binary, parses args and optional `muri.json`/`muri.jsonc` config
@@ -39,9 +38,10 @@ Three Rust crates in a workspace:
 ## Key Code Patterns
 
 - Use `FxHashMap`/`FxHashSet` from `rustc_hash` instead of std collections (enforced by clippy)
-- Compilers and plugins auto-detect from package.json dependencies; can be overridden in config
+- Plugins auto-detect from package.json dependencies; can be overridden in config
 - Entry points and project files use glob patterns compiled once upfront
 - Graph traversal processes files in parallel waves using rayon
+- Foreign file imports (CSS, images, etc.) are resolved but not parsed - a warning is printed
 
 ## Configuration
 
@@ -51,7 +51,6 @@ Config file (`muri.json` or `muri.jsonc`) example:
   "entry": ["src/index.ts"],
   "project": ["src/**/*.ts"],
   "ignore": ["**/*.test.ts"],
-  "compilers": { "scss": true },
   "plugins": { "storybook": true }
 }
 ```

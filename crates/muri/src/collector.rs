@@ -32,24 +32,14 @@ impl CompiledMatchers {
     }
 }
 
-/// Check if a file has a parseable extension (JS/TS or compiler extension)
-fn has_parseable_extension(path: &Path, additional_extensions: &[String]) -> bool {
+/// Check if a file has a parseable extension (JS/TS only)
+fn has_parseable_extension(path: &Path) -> bool {
     let ext = match path.extension().and_then(|e| e.to_str()) {
         Some(e) => format!(".{e}"),
         None => return false,
     };
 
-    // Check default JS/TS extensions
-    if DEFAULT_EXTENSIONS.iter().any(|&default_ext| default_ext == ext) {
-        return true;
-    }
-
-    // Check compiler extensions
-    if additional_extensions.iter().any(|compiler_ext| compiler_ext == &ext) {
-        return true;
-    }
-
-    false
+    DEFAULT_EXTENSIONS.iter().any(|&default_ext| default_ext == ext)
 }
 
 /// Expand brace patterns like `**/*.{ts,tsx}` into multiple patterns
@@ -89,8 +79,6 @@ fn compile_globset(patterns: &[String]) -> GlobSet {
 pub struct Collector {
     cwd: PathBuf,
     matchers: CompiledMatchers,
-    /// Additional parseable extensions from compilers (e.g., ".scss")
-    compiler_extensions: Vec<String>,
 }
 
 impl Collector {
@@ -103,36 +91,6 @@ impl Collector {
         Self {
             cwd: cwd.to_path_buf(),
             matchers: CompiledMatchers::new(entry_patterns, project_patterns, ignore_patterns),
-            compiler_extensions: Vec::new(),
-        }
-    }
-
-    /// Create a collector with additional patterns for compiler extensions
-    pub fn with_compiler_extensions(
-        cwd: &Path,
-        entry_patterns: &[String],
-        project_patterns: &[String],
-        ignore_patterns: &[String],
-        compiler_extensions: &[String],
-    ) -> Self {
-        let mut extended_project_patterns = project_patterns.to_vec();
-
-        // Auto-add patterns for enabled compilers
-        for ext in compiler_extensions {
-            let pattern = format!("**/*{ext}");
-            if !extended_project_patterns.iter().any(|p| p.contains(ext)) {
-                extended_project_patterns.push(pattern);
-            }
-        }
-
-        Self {
-            cwd: cwd.to_path_buf(),
-            matchers: CompiledMatchers::new(
-                entry_patterns,
-                &extended_project_patterns,
-                ignore_patterns,
-            ),
-            compiler_extensions: compiler_extensions.to_vec(),
         }
     }
 
@@ -177,8 +135,8 @@ impl Collector {
             // Check if file matches project patterns AND has a parseable extension
             // This filters out foreign files (images, fonts, etc.) from project_files
             // while still allowing them to be resolved when imported
-            let is_project = self.matchers.project.is_match(&*relative_str)
-                && has_parseable_extension(path, &self.compiler_extensions);
+            let is_project =
+                self.matchers.project.is_match(&*relative_str) && has_parseable_extension(path);
 
             // Check if file matches entry patterns
             let is_entry = self.matchers.entry.is_match(&*relative_str);

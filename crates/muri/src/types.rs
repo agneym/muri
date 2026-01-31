@@ -7,7 +7,7 @@ pub const DEFAULT_EXTENSIONS: &[&str] =
     &[".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".json"];
 
 /// Foreign file extensions - assets that can be imported but don't contain JS/TS code.
-/// These files are resolved verbatim and marked as reachable, but not parsed for imports.
+/// These files can be resolved but are not added to the reachable set or parsed for imports.
 pub const FOREIGN_FILE_EXTENSIONS: &[&str] = &[
     ".avif", ".css", ".eot", ".gif", ".html", ".ico", ".jpeg", ".jpg", ".less", ".mp3", ".png",
     ".sass", ".scss", ".sh", ".svg", ".ttf", ".webp", ".woff", ".woff2", ".yaml", ".yml",
@@ -28,9 +28,6 @@ pub struct MuriConfig {
     /// Patterns to ignore
     pub ignore: Vec<String>,
 
-    /// Compiler configuration
-    pub compilers: CompilerConfig,
-
     /// Plugin configuration
     pub plugins: PluginConfig,
 }
@@ -42,30 +39,9 @@ impl Default for MuriConfig {
             project: vec!["**/*.{ts,tsx,js,jsx,mjs,cjs}".to_string()],
             cwd: PathBuf::from("."),
             ignore: Vec::new(),
-            compilers: CompilerConfig::default(),
             plugins: PluginConfig::default(),
         }
     }
-}
-
-/// Configuration for file compilers
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct CompilerConfig {
-    /// Enable/disable SCSS compiler (None = auto-detect based on dependencies)
-    #[serde(default)]
-    pub scss: Option<bool>,
-
-    /// Enable/disable Vue SFC compiler (None = auto-detect based on dependencies)
-    #[serde(default)]
-    pub vue: Option<bool>,
-
-    /// Enable/disable Svelte compiler (None = auto-detect based on dependencies)
-    #[serde(default)]
-    pub svelte: Option<bool>,
-
-    /// Additional file extensions to treat as JS/TS (passthrough to oxc parser)
-    #[serde(default)]
-    pub extensions: Vec<String>,
 }
 
 /// Configuration for plugins that discover entry points
@@ -109,9 +85,6 @@ pub struct FileConfig {
 
     #[serde(default)]
     pub ignore: Vec<String>,
-
-    #[serde(default)]
-    pub compilers: CompilerConfig,
 
     #[serde(default)]
     pub plugins: PluginConfig,
