@@ -1,6 +1,6 @@
 use crate::plugin::EntryPattern;
 use crate::types::DEFAULT_EXTENSIONS;
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use fast_glob::glob_match;
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use rustc_hash::FxHashSet;
@@ -12,21 +12,21 @@ pub struct ProjectIndex {
     pub project_files: FxHashSet<PathBuf>,
 }
 
-/// A compiled plugin pattern with its resolved base directory
-struct CompiledPluginPattern {
-    matcher: GlobSet,
+/// A plugin pattern with its resolved base directory
+struct PluginPattern {
+    pattern: String,
     base: PathBuf,
 }
 
-/// Precompiled glob matchers for efficient file matching
-struct CompiledMatchers {
-    entry: GlobSet,
-    project: GlobSet,
-    ignore: GlobSet,
-    plugin_patterns: Vec<CompiledPluginPattern>,
+/// Stores glob patterns for matching
+struct Matchers {
+    entry: Vec<String>,
+    project: Vec<String>,
+    ignore: Vec<String>,
+    plugin_patterns: Vec<PluginPattern>,
 }
 
-impl CompiledMatchers {
+impl Matchers {
     fn new(
         entry_patterns: &[String],
         project_patterns: &[String],
@@ -34,8 +34,8 @@ impl CompiledMatchers {
         plugin_patterns: &[EntryPattern],
         cwd: &Path,
     ) -> Self {
-        // Compile plugin patterns, grouping by base directory
-        let mut compiled_plugins = Vec::new();
+        // Resolve plugin pattern base directories
+        let mut resolved_plugins = Vec::new();
         for pattern in plugin_patterns {
             let base = match &pattern.base {
                 Some(b) => cwd.join(b),
@@ -48,16 +48,21 @@ impl CompiledMatchers {
                 Err(_) => continue,
             };
 
-            let matcher = compile_globset(std::slice::from_ref(&pattern.pattern));
-            compiled_plugins.push(CompiledPluginPattern { matcher, base: canonical_base });
+            resolved_plugins
+                .push(PluginPattern { pattern: pattern.pattern.clone(), base: canonical_base });
         }
 
         Self {
-            entry: compile_globset(entry_patterns),
-            project: compile_globset(project_patterns),
-            ignore: compile_globset(ignore_patterns),
-            plugin_patterns: compiled_plugins,
+            entry: entry_patterns.to_vec(),
+            project: project_patterns.to_vec(),
+            ignore: ignore_patterns.to_vec(),
+            plugin_patterns: resolved_plugins,
         }
+    }
+
+    /// Check if path matches any pattern in the list
+    fn matches_any(patterns: &[String], path: &str) -> bool {
+        patterns.iter().any(|p| glob_match(p, path))
     }
 }
 
@@ -71,43 +76,9 @@ fn has_parseable_extension(path: &Path) -> bool {
     DEFAULT_EXTENSIONS.iter().any(|&default_ext| default_ext == ext)
 }
 
-/// Expand brace patterns like `**/*.{ts,tsx}` into multiple patterns
-fn expand_brace_pattern(pattern: &str) -> Vec<String> {
-    if let Some(start) = pattern.find('{') {
-        if let Some(end) = pattern[start..].find('}') {
-            let end = start + end;
-            let prefix = &pattern[..start];
-            let suffix = &pattern[end + 1..];
-            let alternatives = &pattern[start + 1..end];
-
-            return alternatives
-                .split(',')
-                .flat_map(|alt| {
-                    let expanded = format!("{prefix}{alt}{suffix}");
-                    expand_brace_pattern(&expanded)
-                })
-                .collect();
-        }
-    }
-    vec![pattern.to_string()]
-}
-
-/// Compile a list of glob patterns into a GlobSet for efficient matching
-fn compile_globset(patterns: &[String]) -> GlobSet {
-    let mut builder = GlobSetBuilder::new();
-    for pattern in patterns {
-        for expanded in expand_brace_pattern(pattern) {
-            if let Ok(glob) = Glob::new(&expanded) {
-                builder.add(glob);
-            }
-        }
-    }
-    builder.build().unwrap_or_else(|_| GlobSetBuilder::new().build().unwrap())
-}
-
 pub struct Collector {
     cwd: PathBuf,
-    matchers: CompiledMatchers,
+    matchers: Matchers,
 }
 
 impl Collector {
@@ -120,7 +91,7 @@ impl Collector {
     ) -> Self {
         Self {
             cwd: cwd.to_path_buf(),
-            matchers: CompiledMatchers::new(
+            matchers: Matchers::new(
                 entry_patterns,
                 project_patterns,
                 ignore_patterns,
@@ -157,8 +128,8 @@ impl Collector {
             let relative = path.strip_prefix(&self.cwd).unwrap_or(path);
             let relative_str = relative.to_string_lossy();
 
-            // Check ignore patterns (precompiled)
-            if self.matchers.ignore.is_match(&*relative_str) {
+            // Check ignore patterns
+            if Matchers::matches_any(&self.matchers.ignore, &relative_str) {
                 continue;
             }
 
@@ -171,11 +142,11 @@ impl Collector {
             // Check if file matches project patterns AND has a parseable extension
             // This filters out foreign files (images, fonts, etc.) from project_files
             // while still allowing them to be resolved when imported
-            let is_project =
-                self.matchers.project.is_match(&*relative_str) && has_parseable_extension(path);
+            let is_project = Matchers::matches_any(&self.matchers.project, &relative_str)
+                && has_parseable_extension(path);
 
             // Check if file matches entry patterns
-            let is_entry = self.matchers.entry.is_match(&*relative_str);
+            let is_entry = Matchers::matches_any(&self.matchers.entry, &relative_str);
 
             // Check if file matches any plugin patterns
             let is_plugin_entry = self.check_plugin_patterns(&canonical);
@@ -194,15 +165,63 @@ impl Collector {
 
     /// Check if a file matches any plugin pattern
     fn check_plugin_patterns(&self, canonical_path: &Path) -> bool {
-        for compiled in &self.matchers.plugin_patterns {
+        for plugin in &self.matchers.plugin_patterns {
             // Check if path is under this pattern's base
-            if let Ok(relative) = canonical_path.strip_prefix(&compiled.base) {
+            if let Ok(relative) = canonical_path.strip_prefix(&plugin.base) {
                 let relative_str = relative.to_string_lossy();
-                if compiled.matcher.is_match(&*relative_str) {
+                if glob_match(&plugin.pattern, &*relative_str) {
                     return true;
                 }
             }
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nested_brace_patterns() {
+        // This is the pattern Storybook uses - nested braces must work correctly
+        let pattern = "**/*.{mdx,stories.{tsx,ts,jsx,js}}";
+        let patterns = vec![pattern.to_string()];
+
+        // All these should match
+        assert!(Matchers::matches_any(&patterns, "components/Button.stories.tsx"));
+        assert!(Matchers::matches_any(&patterns, "components/Button.stories.ts"));
+        assert!(Matchers::matches_any(&patterns, "components/Button.stories.jsx"));
+        assert!(Matchers::matches_any(&patterns, "components/Button.stories.js"));
+        assert!(Matchers::matches_any(&patterns, "components/Button.mdx"));
+        assert!(Matchers::matches_any(&patterns, "deep/nested/path/Component.stories.jsx"));
+
+        // These should NOT match
+        assert!(!Matchers::matches_any(&patterns, "components/Button.tsx"));
+        assert!(!Matchers::matches_any(&patterns, "components/Button.ts"));
+        assert!(!Matchers::matches_any(&patterns, "components/Button.stories.css"));
+    }
+
+    #[test]
+    fn test_simple_brace_patterns() {
+        let pattern = "**/*.{ts,tsx}";
+        let patterns = vec![pattern.to_string()];
+
+        assert!(Matchers::matches_any(&patterns, "src/index.ts"));
+        assert!(Matchers::matches_any(&patterns, "src/App.tsx"));
+        assert!(!Matchers::matches_any(&patterns, "src/index.js"));
+    }
+
+    #[test]
+    fn test_deeply_nested_brace_patterns() {
+        // Three levels of nesting
+        let pattern = "**/*.{a,b.{c,d.{e,f}}}";
+        let patterns = vec![pattern.to_string()];
+
+        assert!(Matchers::matches_any(&patterns, "file.a"));
+        assert!(Matchers::matches_any(&patterns, "file.b.c"));
+        assert!(Matchers::matches_any(&patterns, "file.b.d.e"));
+        assert!(Matchers::matches_any(&patterns, "file.b.d.f"));
+        assert!(!Matchers::matches_any(&patterns, "file.b.d.g"));
     }
 }

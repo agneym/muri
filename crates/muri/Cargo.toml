@@ -16,7 +16,6 @@ oxc_ast.workspace = true
 oxc_span.workspace = true
 oxc_allocator.workspace = true
 regex.workspace = true
-globset.workspace = true
 fast-glob.workspace = true
 rustc-hash.workspace = true
 rayon.workspace = true
