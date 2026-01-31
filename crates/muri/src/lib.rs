@@ -97,7 +97,8 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     // Build graph and find unused (with shared module cache for parsing)
     let resolver = Arc::new(ModuleResolver::new(&cwd));
     let module_cache = Arc::new(ModuleCache::new());
-    let graph = DependencyGraph::new(index.project_files.clone(), resolver, module_cache);
+    let graph =
+        DependencyGraph::new(index.project_files.clone(), resolver, module_cache, config.verbose);
     let unused = graph.find_unused(&index.entry_files.into_iter().collect::<Vec<_>>());
 
     Ok(Report::new(unused, index.project_files.len()))
@@ -134,7 +135,7 @@ pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf
 
     let resolver = Arc::new(ModuleResolver::new(&cwd));
     let module_cache = Arc::new(ModuleCache::new());
-    let graph = DependencyGraph::new(index.project_files, resolver, module_cache);
+    let graph = DependencyGraph::new(index.project_files, resolver, module_cache, config.verbose);
     let reachable = graph.find_reachable(&index.entry_files.into_iter().collect::<Vec<_>>());
 
     let mut result: Vec<_> = reachable.into_iter().collect();

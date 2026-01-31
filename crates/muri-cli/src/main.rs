@@ -87,7 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let plugins = file_config.as_ref().map(|cfg| cfg.plugins.clone()).unwrap_or_default();
 
-    let config = MuriConfig { entry, project, cwd: cli.cwd.clone(), ignore, plugins };
+    let config =
+        MuriConfig { entry, project, cwd: cli.cwd.clone(), ignore, plugins, verbose: cli.verbose };
 
     let cwd = config.cwd.canonicalize()?;
 

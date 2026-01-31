@@ -30,6 +30,9 @@ pub struct MuriConfig {
 
     /// Plugin configuration
     pub plugins: PluginConfig,
+
+    /// Enable verbose output
+    pub verbose: bool,
 }
 
 impl Default for MuriConfig {
@@ -40,6 +43,7 @@ impl Default for MuriConfig {
             cwd: PathBuf::from("."),
             ignore: Vec::new(),
             plugins: PluginConfig::default(),
+            verbose: false,
         }
     }
 }

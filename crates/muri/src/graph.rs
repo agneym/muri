@@ -19,6 +19,7 @@ pub struct DependencyGraph {
     project_files: FxHashSet<PathBuf>,
     resolver: Arc<ModuleResolver>,
     module_cache: Arc<ModuleCache>,
+    verbose: bool,
 }
 
 impl DependencyGraph {
@@ -26,8 +27,9 @@ impl DependencyGraph {
         project_files: FxHashSet<PathBuf>,
         resolver: Arc<ModuleResolver>,
         module_cache: Arc<ModuleCache>,
+        verbose: bool,
     ) -> Self {
-        Self { project_files, resolver, module_cache }
+        Self { project_files, resolver, module_cache, verbose }
     }
 
     pub fn find_reachable(&self, entry_points: &[PathBuf]) -> FxHashSet<PathBuf> {
@@ -58,7 +60,8 @@ impl DependencyGraph {
                             if !reachable.contains(&resolved) {
                                 queue.insert(resolved);
                             }
-                        } else if is_foreign_file(&resolved)
+                        } else if self.verbose
+                            && is_foreign_file(&resolved)
                             && warned_foreign.insert(resolved.clone())
                         {
                             eprintln!(

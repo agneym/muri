@@ -28,6 +28,10 @@ pub struct Cli {
     /// Patterns to ignore
     #[arg(long)]
     pub ignore: Vec<String>,
+
+    /// Enable verbose output (warnings about foreign files, etc.)
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 #[derive(Clone, ValueEnum, Default)]
