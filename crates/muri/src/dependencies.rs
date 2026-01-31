@@ -20,7 +20,7 @@ pub fn detect_dependencies(cwd: &Path) -> FxHashSet<String> {
 
     let mut deps = FxHashSet::default();
 
-    for field in ["dependencies", "devDependencies", "peerDependencies"] {
+    for field in ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] {
         if let Some(obj) = pkg.get(field).and_then(|v| v.as_object()) {
             for key in obj.keys() {
                 deps.insert(key.clone());
@@ -49,6 +49,9 @@ mod tests {
             },
             "peerDependencies": {
                 "vue": "^3.0.0"
+            },
+            "optionalDependencies": {
+                "@storybook/react": "^8.0.0"
             }
         }"#;
         fs::write(dir.path().join("package.json"), pkg_json).unwrap();
@@ -58,6 +61,7 @@ mod tests {
         assert!(deps.contains("lodash"));
         assert!(deps.contains("sass"));
         assert!(deps.contains("vue"));
+        assert!(deps.contains("@storybook/react"));
     }
 
     #[test]
