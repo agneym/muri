@@ -59,8 +59,7 @@ impl TailwindPlugin {
 
         // Extract import declarations (ESM)
         for stmt in &parsed.program.body {
-            if let Some(ModuleDeclaration::ImportDeclaration(import)) =
-                stmt.as_module_declaration()
+            if let Some(ModuleDeclaration::ImportDeclaration(import)) = stmt.as_module_declaration()
             {
                 let source = import.source.value.as_str();
                 if is_local_path(source) {
@@ -119,11 +118,7 @@ impl TailwindPlugin {
     }
 
     /// Extract require() calls from an expression
-    fn extract_requires_from_expression(
-        &self,
-        expr: &Expression,
-        paths: &mut FxHashSet<String>,
-    ) {
+    fn extract_requires_from_expression(&self, expr: &Expression, paths: &mut FxHashSet<String>) {
         match expr {
             Expression::CallExpression(call) => {
                 self.extract_requires_from_call(call, paths);
