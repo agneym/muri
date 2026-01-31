@@ -1,5 +1,5 @@
 use super::{Plugin, PluginError};
-use glob::glob;
+use globset::GlobBuilder;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, Expression, ModuleDeclaration, ObjectPropertyKind, PropertyKey, Statement,
@@ -266,32 +266,97 @@ impl StorybookPlugin {
         let mut entries = Vec::new();
 
         for pattern in patterns {
-            // Resolve relative to .storybook directory (where main.js is)
+            // Resolve base directory relative to .storybook directory (where main.js is)
+            // We need to separate the directory path from the glob pattern because:
+            // 1. Directory paths may contain ".." which needs canonicalization
+            // 2. Glob patterns contain wildcards that can't be canonicalized
             let full_pattern = if pattern.starts_with("../") || pattern.starts_with("./") {
                 storybook_dir.join(pattern)
             } else {
                 cwd.join(pattern)
             };
 
-            // Convert path to string for glob, handling @ syntax
             let pattern_str = full_pattern.to_string_lossy();
 
-            // Storybook uses @() syntax for alternatives, convert to glob {}
-            // Use regex to only match proper @(...) patterns
+            // Convert Storybook's @() syntax to glob {} syntax
             let glob_pattern = convert_storybook_glob(&pattern_str);
 
-            for entry in glob(&glob_pattern)? {
-                let path = entry?;
-                // Validate path is within project directory to prevent path traversal
-                if let Ok(canonical) = path.canonicalize() {
-                    if canonical.starts_with(&cwd_canonical) {
-                        entries.push(canonical);
+            // Find where glob special characters start to split base dir from pattern
+            let glob_chars = ['*', '{', '[', '?'];
+            let glob_start = glob_pattern.find(|c| glob_chars.contains(&c));
+
+            let (base_dir, glob_suffix) = if let Some(idx) = glob_start {
+                // Find the last path separator before the glob starts
+                let before_glob = &glob_pattern[..idx];
+                let last_sep = before_glob.rfind('/').unwrap_or(0);
+                let base = PathBuf::from(&glob_pattern[..last_sep]);
+                let suffix = &glob_pattern[last_sep..];
+                // Remove leading slash from suffix if present
+                let suffix = suffix.strip_prefix('/').unwrap_or(suffix);
+                (base, suffix.to_string())
+            } else {
+                // No glob chars, treat entire path as base
+                (PathBuf::from(&*glob_pattern), String::new())
+            };
+
+            // Canonicalize the base directory to resolve ".." components
+            let canonical_base = match base_dir.canonicalize() {
+                Ok(p) => p,
+                Err(_) => continue, // Skip if directory doesn't exist
+            };
+
+            // Ensure base is within project directory
+            if !canonical_base.starts_with(&cwd_canonical) {
+                continue;
+            }
+
+            if glob_suffix.is_empty() {
+                // No glob pattern, just add the directory/file if it exists
+                if canonical_base.exists() {
+                    entries.push(canonical_base);
+                }
+                continue;
+            }
+
+            // Build glob matcher using globset (which supports brace expansion)
+            let glob = match GlobBuilder::new(&glob_suffix).literal_separator(true).build() {
+                Ok(g) => g,
+                Err(_) => continue,
+            };
+            let matcher = glob.compile_matcher();
+
+            // Walk directory and match files
+            Self::walk_and_match(&canonical_base, &canonical_base, &matcher, &mut entries);
+        }
+
+        Ok(entries)
+    }
+
+    /// Recursively walk directory and collect files matching the glob pattern
+    fn walk_and_match(
+        dir: &Path,
+        base: &Path,
+        matcher: &globset::GlobMatcher,
+        entries: &mut Vec<PathBuf>,
+    ) {
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
+
+        for entry in read_dir.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                Self::walk_and_match(&path, base, matcher, entries);
+            } else if path.is_file() {
+                // Match against relative path from base
+                if let Ok(relative) = path.strip_prefix(base) {
+                    if matcher.is_match(relative) {
+                        entries.push(path);
                     }
                 }
             }
         }
-
-        Ok(entries)
     }
 
     /// Default story patterns when config parsing fails
