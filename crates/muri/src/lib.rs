@@ -21,7 +21,7 @@ use collector::Collector;
 use dependencies::detect_dependencies;
 use graph::DependencyGraph;
 use module_cache::ModuleCache;
-use plugin::{Plugin, StorybookPlugin, TailwindPlugin};
+use plugin::{Plugin, PostcssPlugin, StorybookPlugin, TailwindPlugin};
 use resolver::ModuleResolver;
 use rustc_hash::FxHashSet;
 
@@ -50,6 +50,15 @@ fn create_plugin_registry(
 
     if tailwind_enabled {
         registry.register(Arc::new(tailwind_plugin));
+    }
+
+    // PostCSS plugin: check config override, then fall back to auto-detection
+    let postcss_plugin = PostcssPlugin::new();
+    let postcss_enabled =
+        plugin_config.postcss.unwrap_or_else(|| postcss_plugin.should_enable(cwd, deps));
+
+    if postcss_enabled {
+        registry.register(Arc::new(postcss_plugin));
     }
 
     registry
@@ -92,11 +101,11 @@ pub fn find_unused_files(config: MuriConfig) -> Result<Report, MuriError> {
     let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
     let plugin_entries = plugin_registry.detect_all_entries(&cwd);
 
-    // Merge plugin-discovered entries into index (only if they're in project files)
+    // Merge plugin-discovered entries into index.
+    // Plugin entries (like config files) may be outside the project directory,
+    // but we still need to trace their imports to mark project files as reachable.
     for entry in plugin_entries {
-        if index.project_files.contains(&entry) {
-            index.entry_files.insert(entry);
-        }
+        index.entry_files.insert(entry);
     }
 
     if index.entry_files.is_empty() {
@@ -131,11 +140,11 @@ pub fn find_reachable_files(config: MuriConfig) -> Result<Vec<std::path::PathBuf
     let plugin_registry = create_plugin_registry(&cwd, &config.plugins, &deps);
     let plugin_entries = plugin_registry.detect_all_entries(&cwd);
 
-    // Merge plugin-discovered entries into index (only if they're in project files)
+    // Merge plugin-discovered entries into index.
+    // Plugin entries (like config files) may be outside the project directory,
+    // but we still need to trace their imports to mark project files as reachable.
     for entry in plugin_entries {
-        if index.project_files.contains(&entry) {
-            index.entry_files.insert(entry);
-        }
+        index.entry_files.insert(entry);
     }
 
     if index.entry_files.is_empty() {

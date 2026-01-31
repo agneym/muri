@@ -1,7 +1,9 @@
+mod postcss;
 mod registry;
 mod storybook;
 mod tailwind;
 
+pub use postcss::PostcssPlugin;
 pub use registry::PluginRegistry;
 pub use storybook::StorybookPlugin;
 pub use tailwind::TailwindPlugin;

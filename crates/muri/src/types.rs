@@ -59,6 +59,10 @@ pub struct PluginConfig {
     #[serde(default)]
     pub tailwind: Option<bool>,
 
+    /// Enable/disable PostCSS plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub postcss: Option<bool>,
+
     /// Enable/disable Jest plugin (None = auto-detect based on dependencies)
     #[serde(default)]
     pub jest: Option<bool>,
