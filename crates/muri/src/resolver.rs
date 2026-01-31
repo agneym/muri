@@ -1,4 +1,5 @@
 use crate::compiler::CompilerRegistry;
+use crate::types::{DEFAULT_EXTENSIONS, FOREIGN_FILE_EXTENSIONS};
 use oxc_resolver::{ResolveOptions, Resolver, TsconfigOptions, TsconfigReferences};
 use std::path::{Path, PathBuf};
 
@@ -23,18 +24,14 @@ impl ModuleResolver {
             None
         };
 
-        let mut extensions: Vec<String> = vec![
-            ".ts".into(),
-            ".tsx".into(),
-            ".d.ts".into(),
-            ".js".into(),
-            ".jsx".into(),
-            ".mjs".into(),
-            ".cjs".into(),
-            ".mts".into(),
-            ".cts".into(),
-            ".json".into(),
-        ];
+        // Start with default JS/TS extensions
+        let mut extensions: Vec<String> =
+            DEFAULT_EXTENSIONS.iter().map(|s| (*s).to_string()).collect();
+
+        // Add foreign file extensions (assets like images, fonts, etc.)
+        for ext in FOREIGN_FILE_EXTENSIONS {
+            extensions.push((*ext).to_string());
+        }
 
         // Add compiler extensions
         for ext in additional_extensions {

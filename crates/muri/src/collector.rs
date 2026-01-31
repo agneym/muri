@@ -1,3 +1,4 @@
+use crate::types::DEFAULT_EXTENSIONS;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
@@ -29,6 +30,26 @@ impl CompiledMatchers {
             ignore: compile_globset(ignore_patterns),
         }
     }
+}
+
+/// Check if a file has a parseable extension (JS/TS or compiler extension)
+fn has_parseable_extension(path: &Path, additional_extensions: &[String]) -> bool {
+    let ext = match path.extension().and_then(|e| e.to_str()) {
+        Some(e) => format!(".{e}"),
+        None => return false,
+    };
+
+    // Check default JS/TS extensions
+    if DEFAULT_EXTENSIONS.iter().any(|&default_ext| default_ext == ext) {
+        return true;
+    }
+
+    // Check compiler extensions
+    if additional_extensions.iter().any(|compiler_ext| compiler_ext == &ext) {
+        return true;
+    }
+
+    false
 }
 
 /// Expand brace patterns like `**/*.{ts,tsx}` into multiple patterns
@@ -68,6 +89,8 @@ fn compile_globset(patterns: &[String]) -> GlobSet {
 pub struct Collector {
     cwd: PathBuf,
     matchers: CompiledMatchers,
+    /// Additional parseable extensions from compilers (e.g., ".scss")
+    compiler_extensions: Vec<String>,
 }
 
 impl Collector {
@@ -80,6 +103,7 @@ impl Collector {
         Self {
             cwd: cwd.to_path_buf(),
             matchers: CompiledMatchers::new(entry_patterns, project_patterns, ignore_patterns),
+            compiler_extensions: Vec::new(),
         }
     }
 
@@ -108,6 +132,7 @@ impl Collector {
                 &extended_project_patterns,
                 ignore_patterns,
             ),
+            compiler_extensions: compiler_extensions.to_vec(),
         }
     }
 
@@ -149,8 +174,11 @@ impl Collector {
                 Err(_) => continue,
             };
 
-            // Check if file matches project patterns
-            let is_project = self.matchers.project.is_match(&*relative_str);
+            // Check if file matches project patterns AND has a parseable extension
+            // This filters out foreign files (images, fonts, etc.) from project_files
+            // while still allowing them to be resolved when imported
+            let is_project = self.matchers.project.is_match(&*relative_str)
+                && has_parseable_extension(path, &self.compiler_extensions);
 
             // Check if file matches entry patterns
             let is_entry = self.matchers.entry.is_match(&*relative_str);

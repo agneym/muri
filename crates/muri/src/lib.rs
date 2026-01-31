@@ -15,7 +15,10 @@ use std::sync::Arc;
 pub use compiler::CompilerRegistry;
 pub use plugin::PluginRegistry;
 pub use reporter::Report;
-pub use types::{CompilerConfig, FileConfig, MuriConfig, MuriError, PluginConfig};
+pub use types::{
+    CompilerConfig, DEFAULT_EXTENSIONS, FOREIGN_FILE_EXTENSIONS, FileConfig, MuriConfig, MuriError,
+    PluginConfig,
+};
 
 use collector::Collector;
 use dependencies::detect_dependencies;

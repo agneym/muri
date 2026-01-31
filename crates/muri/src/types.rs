@@ -2,6 +2,17 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// Default extensions for JavaScript/TypeScript module resolution
+pub const DEFAULT_EXTENSIONS: &[&str] =
+    &[".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".json"];
+
+/// Foreign file extensions - assets that can be imported but don't contain JS/TS code.
+/// These files are resolved verbatim and marked as reachable, but not parsed for imports.
+pub const FOREIGN_FILE_EXTENSIONS: &[&str] = &[
+    ".avif", ".css", ".eot", ".gif", ".html", ".ico", ".jpeg", ".jpg", ".less", ".mp3", ".png",
+    ".sass", ".scss", ".sh", ".svg", ".ttf", ".webp", ".woff", ".woff2", ".yaml", ".yml",
+];
+
 /// Configuration for finding unused files
 #[derive(Debug, Clone)]
 pub struct MuriConfig {

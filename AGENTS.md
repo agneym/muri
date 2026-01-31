@@ -4,10 +4,12 @@ Muri is a fast tool to detect unused files in JavaScript/TypeScript projects. Bu
 
 ## Build & Development
 
+Use pnpm as package manager for Node.js
+
 ```bash
-npm run build              # Build NAPI + CLI binary
-npm run build:debug        # Debug build of NAPI only
-npm run test               # Run Node.js API tests (tests/node-api.test.js)
+pnpm run build              # Build NAPI + CLI binary
+pnpm run build:debug        # Debug build of NAPI only
+pnpm run test               # Run Node.js API tests (tests/node-api.test.js)
 cargo check -p muri        # Quick type check core library
 cargo test -p muri         # Run Rust unit tests
 cargo build --release -p muri-cli  # Build CLI binary only
