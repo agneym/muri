@@ -74,6 +74,34 @@ pub struct PluginConfig {
     /// Enable/disable Next.js plugin (None = auto-detect based on dependencies)
     #[serde(default)]
     pub nextjs: Option<bool>,
+
+    /// Enable/disable ESLint plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub eslint: Option<bool>,
+
+    /// Enable/disable Vite plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub vite: Option<bool>,
+
+    /// Enable/disable TypeScript plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub typescript: Option<bool>,
+
+    /// Enable/disable Cypress plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub cypress: Option<bool>,
+
+    /// Enable/disable Playwright plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub playwright: Option<bool>,
+
+    /// Enable/disable husky plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub husky: Option<bool>,
+
+    /// Enable/disable lint-staged plugin (None = auto-detect based on dependencies)
+    #[serde(default)]
+    pub lint_staged: Option<bool>,
 }
 
 /// Error types for muri operations

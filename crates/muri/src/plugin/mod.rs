@@ -1,12 +1,32 @@
+mod cypress;
+mod eslint;
+mod husky;
+mod jest;
+mod lint_staged;
+mod nextjs;
+mod playwright;
 mod postcss;
 mod registry;
 mod storybook;
 mod tailwind;
+mod typescript;
+mod vite;
+mod vitest;
 
+pub use cypress::CypressPlugin;
+pub use eslint::EslintPlugin;
+pub use husky::HuskyPlugin;
+pub use jest::JestPlugin;
+pub use lint_staged::LintStagedPlugin;
+pub use nextjs::NextjsPlugin;
+pub use playwright::PlaywrightPlugin;
 pub use postcss::PostcssPlugin;
 pub use registry::PluginRegistry;
 pub use storybook::StorybookPlugin;
 pub use tailwind::TailwindPlugin;
+pub use typescript::TypescriptPlugin;
+pub use vite::VitePlugin;
+pub use vitest::VitestPlugin;
 
 use rustc_hash::FxHashSet;
 use std::path::{Path, PathBuf};
