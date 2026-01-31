@@ -7,27 +7,41 @@ use oxc_ast::ast::{
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use regex::Regex;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Convert Storybook's @() glob syntax to standard {} glob syntax
 /// Example: "**/*.stories.@(js|jsx|ts|tsx)" -> "**/*.stories.{js,jsx,ts,tsx}"
+///
+/// Handles nested patterns by processing inside-out:
+/// "**/*.@(mdx|stories.@(tsx|ts))" -> "**/*.{mdx,stories.{tsx,ts}}"
 fn convert_storybook_glob(pattern: &str) -> String {
     static STORYBOOK_GLOB_REGEX: OnceLock<Regex> = OnceLock::new();
     let regex = STORYBOOK_GLOB_REGEX.get_or_init(|| {
         // Match @(...) patterns where content is pipe-separated extensions
+        // [^)]+ ensures we match innermost patterns first (no nested parens)
         Regex::new(r"@\(([^)]+)\)").unwrap()
     });
 
-    regex
-        .replace_all(pattern, |caps: &regex::Captures| {
-            // Convert pipe-separated to comma-separated inside braces
-            let inner = &caps[1];
-            format!("{{{}}}", inner.replace('|', ","))
-        })
-        .to_string()
+    let mut result = pattern.to_string();
+    // Loop to handle nested @() patterns from inside out
+    loop {
+        let new_result = regex
+            .replace_all(&result, |caps: &regex::Captures| {
+                // Convert pipe-separated to comma-separated inside braces
+                let inner = &caps[1];
+                format!("{{{}}}", inner.replace('|', ","))
+            })
+            .to_string();
+
+        if new_result == result {
+            break;
+        }
+        result = new_result;
+    }
+    result
 }
 
 /// Plugin to discover Storybook story files as entry points
@@ -64,21 +78,53 @@ impl StorybookPlugin {
             )));
         }
 
-        let mut stories = Vec::new();
+        // First pass: collect variable declarations with stories
+        // Maps variable name -> stories patterns
+        let mut var_stories: FxHashMap<String, Vec<String>> = FxHashMap::default();
 
-        // Look for module.exports = { stories: [...] }
-        // or export default { stories: [...] }
         for stmt in &parsed.program.body {
-            if let Some(patterns) = self.extract_stories_from_statement(stmt) {
-                stories.extend(patterns);
+            if let Some((name, patterns)) = self.extract_stories_from_var_decl(stmt) {
+                var_stories.insert(name, patterns);
             }
         }
 
-        Ok(stories)
+        // Second pass: look for exports
+        for stmt in &parsed.program.body {
+            if let Some(patterns) = self.extract_stories_from_statement(stmt, &var_stories) {
+                if !patterns.is_empty() {
+                    return Ok(patterns);
+                }
+            }
+        }
+
+        Ok(Vec::new())
+    }
+
+    /// Extract stories from a variable declaration
+    /// Returns (variable_name, stories_patterns) if found
+    fn extract_stories_from_var_decl(&self, stmt: &Statement) -> Option<(String, Vec<String>)> {
+        if let Statement::VariableDeclaration(var_decl) = stmt {
+            for decl in &var_decl.declarations {
+                // Get the variable name
+                let name = decl.id.get_identifier_name()?;
+
+                // Check if it has an object initializer with stories
+                if let Some(Expression::ObjectExpression(obj)) = &decl.init {
+                    if let Some(patterns) = self.extract_stories_from_object(obj) {
+                        return Some((name.to_string(), patterns));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Extract stories patterns from a statement
-    fn extract_stories_from_statement(&self, stmt: &Statement) -> Option<Vec<String>> {
+    fn extract_stories_from_statement(
+        &self,
+        stmt: &Statement,
+        var_stories: &FxHashMap<String, Vec<String>>,
+    ) -> Option<Vec<String>> {
         match stmt {
             // Handle: module.exports = { stories: [...] }
             Statement::ExpressionStatement(expr_stmt) => {
@@ -90,7 +136,7 @@ impl StorybookPlugin {
                 None
             }
             _ => {
-                // Handle: export default { stories: [...] }
+                // Handle: export default ...
                 if let Some(ModuleDeclaration::ExportDefaultDeclaration(export)) =
                     stmt.as_module_declaration()
                 {
@@ -102,6 +148,12 @@ impl StorybookPlugin {
                             // Handle: export default defineConfig({ stories: [...] })
                             if let Some(Argument::ObjectExpression(obj)) = call.arguments.first() {
                                 return self.extract_stories_from_object(obj);
+                            }
+                        }
+                        // Handle: export default config (variable reference)
+                        oxc_ast::ast::ExportDefaultDeclarationKind::Identifier(ident) => {
+                            if let Some(patterns) = var_stories.get(ident.name.as_str()) {
+                                return Some(patterns.clone());
                             }
                         }
                         _ => {}
@@ -392,6 +444,62 @@ module.exports = {
     }
 
     #[test]
+    fn test_parse_variable_reference_config() {
+        let plugin = StorybookPlugin::new();
+        let temp = tempdir().unwrap();
+
+        let storybook_dir = temp.path().join(".storybook");
+        fs::create_dir(&storybook_dir).unwrap();
+
+        // This pattern is used by many TypeScript configs:
+        // const config: StorybookConfig = { ... }; export default config;
+        let config_content = r#"
+const config = {
+  stories: [
+    { directory: '../app/javascript/react', files: '**/*.stories.tsx' }
+  ],
+};
+export default config;
+"#;
+        fs::write(storybook_dir.join("main.ts"), config_content).unwrap();
+
+        let patterns = plugin.parse_config(&storybook_dir.join("main.ts")).unwrap();
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0], "../app/javascript/react/**/*.stories.tsx");
+    }
+
+    #[test]
+    fn test_parse_typed_variable_reference_config() {
+        let plugin = StorybookPlugin::new();
+        let temp = tempdir().unwrap();
+
+        let storybook_dir = temp.path().join(".storybook");
+        fs::create_dir(&storybook_dir).unwrap();
+
+        // TypeScript config with type annotation (like circle's config)
+        let config_content = r#"
+import type { StorybookConfig } from "@storybook/react-webpack5";
+
+const config: StorybookConfig = {
+  stories: [
+    {
+      directory: "../app/javascript/react",
+      files: "**/*.@(mdx|stories.@(tsx|ts|jsx|js))",
+    },
+  ],
+};
+
+export default config;
+"#;
+        fs::write(storybook_dir.join("main.ts"), config_content).unwrap();
+
+        let patterns = plugin.parse_config(&storybook_dir.join("main.ts")).unwrap();
+        assert_eq!(patterns.len(), 1);
+        // parse_config returns raw patterns; conversion happens in expand_patterns
+        assert_eq!(patterns[0], "../app/javascript/react/**/*.@(mdx|stories.@(tsx|ts|jsx|js))");
+    }
+
+    #[test]
     fn test_detect_entries_with_real_files() {
         let plugin = StorybookPlugin::new();
         let temp = tempdir().unwrap();
@@ -450,6 +558,15 @@ module.exports = {
             convert_storybook_glob("**/@(stories|__stories__)/*.@(ts|tsx)"),
             "**/{stories,__stories__}/*.{ts,tsx}"
         );
+
+        // Nested @() patterns (common in Storybook configs)
+        assert_eq!(
+            convert_storybook_glob("**/*.@(mdx|stories.@(tsx|ts|jsx|js))"),
+            "**/*.{mdx,stories.{tsx,ts,jsx,js}}"
+        );
+
+        // Deeply nested @() patterns
+        assert_eq!(convert_storybook_glob("@(a|@(b|@(c|d)))"), "{a,{b,{c,d}}}");
 
         // No @() pattern - should remain unchanged
         assert_eq!(convert_storybook_glob("**/*.stories.tsx"), "**/*.stories.tsx");
