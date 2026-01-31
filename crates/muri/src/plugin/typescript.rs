@@ -1,9 +1,19 @@
-use super::{Plugin, PluginEntries, PluginError};
+use super::{EntryPattern, Plugin, PluginEntries, PluginError};
 use fast_glob::glob_match;
 use rustc_hash::FxHashSet;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Result of parsing a tsconfig.json file
+struct ParsedTsConfig {
+    /// Files from the "files" array
+    files: Vec<PathBuf>,
+    /// Extended config paths from the "extends" field
+    extends: Vec<PathBuf>,
+    /// Include patterns for .d.ts files
+    include_patterns: Vec<EntryPattern>,
+}
 
 /// Plugin to discover TypeScript configuration files and their dependencies as entry points.
 ///
@@ -11,6 +21,7 @@ use std::path::{Path, PathBuf};
 /// - tsconfig.json and tsconfig.*.json files (e.g., tsconfig.build.json)
 /// - Files explicitly listed in the `files` array
 /// - Extended base config files from the `extends` field
+/// - Glob patterns from the `include` array (e.g., ambient .d.ts declaration files)
 pub struct TypescriptPlugin;
 
 impl TypescriptPlugin {
@@ -54,11 +65,7 @@ impl TypescriptPlugin {
     }
 
     /// Parse a tsconfig file and extract entry points.
-    /// Returns (files_from_files_array, extended_config_paths).
-    fn parse_config(
-        &self,
-        config_path: &Path,
-    ) -> Result<(Vec<PathBuf>, Vec<PathBuf>), PluginError> {
+    fn parse_config(&self, config_path: &Path) -> Result<ParsedTsConfig, PluginError> {
         let content = fs::read_to_string(config_path)?;
 
         // Strip comments from JSON (tsconfig allows comments)
@@ -71,6 +78,7 @@ impl TypescriptPlugin {
         let config_dir = config_path.parent().unwrap_or(Path::new("."));
         let mut files = Vec::new();
         let mut extends = Vec::new();
+        let mut include_patterns = Vec::new();
 
         // Extract files from "files" array
         if let Some(files_array) = json.get("files").and_then(|v| v.as_array()) {
@@ -101,7 +109,26 @@ impl TypescriptPlugin {
             }
         }
 
-        Ok((files, extends))
+        // Extract include patterns for ambient declaration files (.d.ts)
+        // TypeScript treats files matched by "include" as part of the project.
+        // We only match .d.ts files here because:
+        // 1. Regular .ts/.tsx files should be reachable via imports from entry points
+        // 2. Only .d.ts files (ambient declarations) need special handling as they
+        //    provide type information without being imported
+        if let Some(include_array) = json.get("include").and_then(|v| v.as_array()) {
+            for pattern_value in include_array {
+                if let Some(pattern_str) = pattern_value.as_str() {
+                    // Normalize the pattern by stripping leading "./" prefix
+                    let normalized = pattern_str.strip_prefix("./").unwrap_or(pattern_str);
+                    // Convert the pattern to only match .d.ts files
+                    // e.g., "src/**/*" becomes "src/**/*.d.ts"
+                    let dts_pattern = convert_to_dts_pattern(normalized);
+                    include_patterns.push(EntryPattern::with_base(dts_pattern, config_dir));
+                }
+            }
+        }
+
+        Ok(ParsedTsConfig { files, extends, include_patterns })
     }
 
     /// Resolve an extends path to an absolute path.
@@ -134,6 +161,41 @@ impl TypescriptPlugin {
 impl Default for TypescriptPlugin {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Convert an include pattern to match only .d.ts files.
+/// Examples:
+/// - "src/**/*" -> "src/**/*.d.ts"
+/// - "src/**/*.ts" -> "src/**/*.d.ts"
+/// - "**/*" -> "**/*.d.ts"
+fn convert_to_dts_pattern(pattern: &str) -> String {
+    // If pattern already ends with .d.ts, keep it as is
+    if pattern.ends_with(".d.ts") {
+        return pattern.to_string();
+    }
+
+    // If pattern ends with a wildcard like * or **/* or *.ts, replace with .d.ts pattern
+    if let Some(stripped) = pattern.strip_suffix("/*") {
+        // "src/**/*" -> "src/**/*.d.ts"
+        return format!("{}/*.d.ts", stripped);
+    }
+
+    if let Some(stripped) = pattern.strip_suffix(".ts") {
+        // "src/**/*.ts" -> "src/**/*.d.ts"
+        return format!("{}.d.ts", stripped);
+    }
+
+    if let Some(stripped) = pattern.strip_suffix(".tsx") {
+        // "src/**/*.tsx" -> "src/**/*.d.ts" (unlikely but handle it)
+        return format!("{}.d.ts", stripped);
+    }
+
+    // For other patterns, append *.d.ts
+    if pattern.ends_with('/') {
+        format!("{}*.d.ts", pattern)
+    } else {
+        format!("{}/*.d.ts", pattern)
     }
 }
 
@@ -214,7 +276,8 @@ impl Plugin for TypescriptPlugin {
     }
 
     fn detect_entries(&self, cwd: &Path) -> Result<PluginEntries, PluginError> {
-        let mut entries = FxHashSet::default();
+        let mut path_entries = FxHashSet::default();
+        let mut pattern_entries = Vec::new();
         let cwd_canonical = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
 
         // Find all tsconfig files
@@ -222,29 +285,32 @@ impl Plugin for TypescriptPlugin {
 
         for config_path in &config_files {
             // Add the tsconfig file itself as an entry point
-            entries.insert(config_path.clone());
+            path_entries.insert(config_path.clone());
 
-            // Parse the config to extract files and extends
-            if let Ok((files, extends)) = self.parse_config(config_path) {
+            // Parse the config to extract files, extends, and include patterns
+            if let Ok(parsed) = self.parse_config(config_path) {
                 // Add files from the "files" array
-                for file in files {
+                for file in parsed.files {
                     // Validate path is within project directory
                     if file.starts_with(&cwd_canonical) {
-                        entries.insert(file);
+                        path_entries.insert(file);
                     }
                 }
 
                 // Add extended config files
-                for extend in extends {
+                for extend in parsed.extends {
                     // Validate path is within project directory
                     if extend.starts_with(&cwd_canonical) {
-                        entries.insert(extend);
+                        path_entries.insert(extend);
                     }
                 }
+
+                // Add include patterns (for ambient .d.ts files, etc.)
+                pattern_entries.extend(parsed.include_patterns);
             }
         }
 
-        Ok(PluginEntries::paths(entries.into_iter().collect()))
+        Ok(PluginEntries::mixed(pattern_entries, path_entries.into_iter().collect()))
     }
 }
 
@@ -572,5 +638,92 @@ mod tests {
     #[test]
     fn test_default_impl() {
         let _: TypescriptPlugin = Default::default();
+    }
+
+    #[test]
+    fn test_extract_include_patterns() {
+        let plugin = TypescriptPlugin::new();
+        let temp = tempdir().unwrap();
+
+        // Create tsconfig with include patterns
+        let config_content = r#"{
+  "compilerOptions": {
+    "target": "ES2020"
+  },
+  "include": ["./src/**/*", "./.storybook/**/*"]
+}"#;
+        fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
+
+        let entries = plugin.detect_entries(temp.path()).unwrap();
+
+        // Should have tsconfig.json as a path
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("tsconfig.json"));
+
+        // Should have include patterns
+        let patterns = entries.get_patterns();
+        assert_eq!(patterns.len(), 2);
+
+        // Patterns should be normalized and converted to .d.ts patterns
+        let pattern_strs: Vec<_> = patterns.iter().map(|p| p.pattern.as_str()).collect();
+        assert!(pattern_strs.contains(&"src/**/*.d.ts"));
+        assert!(pattern_strs.contains(&".storybook/**/*.d.ts"));
+
+        // Patterns should have base directory set
+        for pattern in patterns {
+            assert!(pattern.base.is_some());
+        }
+    }
+
+    #[test]
+    fn test_convert_to_dts_pattern() {
+        // Wildcard patterns
+        assert_eq!(convert_to_dts_pattern("src/**/*"), "src/**/*.d.ts");
+        assert_eq!(convert_to_dts_pattern("**/*"), "**/*.d.ts");
+
+        // Extension patterns
+        assert_eq!(convert_to_dts_pattern("src/**/*.ts"), "src/**/*.d.ts");
+        assert_eq!(convert_to_dts_pattern("src/**/*.tsx"), "src/**/*.d.ts");
+
+        // Already .d.ts pattern
+        assert_eq!(convert_to_dts_pattern("src/**/*.d.ts"), "src/**/*.d.ts");
+
+        // Directory patterns
+        assert_eq!(convert_to_dts_pattern("src/"), "src/*.d.ts");
+        assert_eq!(convert_to_dts_pattern("src"), "src/*.d.ts");
+    }
+
+    #[test]
+    fn test_extract_include_and_files_combined() {
+        let plugin = TypescriptPlugin::new();
+        let temp = tempdir().unwrap();
+
+        // Create source file
+        fs::write(temp.path().join("globals.d.ts"), "declare const VERSION: string;").unwrap();
+
+        // Create tsconfig with both files and include
+        let config_content = r#"{
+  "compilerOptions": {},
+  "files": ["globals.d.ts"],
+  "include": ["src/**/*.ts"]
+}"#;
+        fs::write(temp.path().join("tsconfig.json"), config_content).unwrap();
+
+        let entries = plugin.detect_entries(temp.path()).unwrap();
+
+        // Should have tsconfig.json + globals.d.ts as paths
+        let paths = entries.get_paths();
+        assert_eq!(paths.len(), 2);
+
+        let filenames: Vec<_> =
+            paths.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+        assert!(filenames.contains(&"tsconfig.json".to_string()));
+        assert!(filenames.contains(&"globals.d.ts".to_string()));
+
+        // Should have include pattern (converted to .d.ts)
+        let patterns = entries.get_patterns();
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].pattern, "src/**/*.d.ts");
     }
 }
