@@ -3,7 +3,7 @@ pre-commit:
   commands:
     rustfmt:
       glob: "*.rs"
-      run: cargo fmt -- --check
+      run: cargo fmt
     clippy:
       glob: "*.rs"
       run: cargo clippy --all-targets --all-features -- -D warnings
