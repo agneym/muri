@@ -17,6 +17,7 @@ fn is_foreign_file(path: &Path) -> bool {
 
 pub struct DependencyGraph {
     project_files: FxHashSet<PathBuf>,
+    ignored_files: FxHashSet<PathBuf>,
     resolver: Arc<ModuleResolver>,
     module_cache: Arc<ModuleCache>,
     verbose: bool,
@@ -25,11 +26,12 @@ pub struct DependencyGraph {
 impl DependencyGraph {
     pub fn new(
         project_files: FxHashSet<PathBuf>,
+        ignored_files: FxHashSet<PathBuf>,
         resolver: Arc<ModuleResolver>,
         module_cache: Arc<ModuleCache>,
         verbose: bool,
     ) -> Self {
-        Self { project_files, resolver, module_cache, verbose }
+        Self { project_files, ignored_files, resolver, module_cache, verbose }
     }
 
     pub fn find_reachable(&self, entry_points: &[PathBuf]) -> FxHashSet<PathBuf> {
@@ -37,9 +39,18 @@ impl DependencyGraph {
         let queue: DashSet<PathBuf> = DashSet::new();
         let warned_foreign: DashSet<PathBuf> = DashSet::new();
 
+        // Combined set for membership checks (project + ignored files)
+        let all_files: FxHashSet<_> =
+            self.project_files.union(&self.ignored_files).cloned().collect();
+
         // Seed with entry points
         for entry in entry_points {
             queue.insert(entry.clone());
+        }
+
+        // Seed with ignored files - their imports should mark files as reachable
+        for ignored in &self.ignored_files {
+            queue.insert(ignored.clone());
         }
 
         // Process in waves for parallelism
@@ -56,7 +67,8 @@ impl DependencyGraph {
                 let module_info = self.module_cache.get_or_parse(file);
                 for import in &module_info.imports {
                     if let Some(resolved) = self.resolver.resolve(file, &import.source) {
-                        if self.project_files.contains(&resolved) {
+                        // Check against all files (project + ignored)
+                        if all_files.contains(&resolved) {
                             if !reachable.contains(&resolved) {
                                 queue.insert(resolved);
                             }

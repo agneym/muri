@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 pub struct ProjectIndex {
     pub entry_files: FxHashSet<PathBuf>,
     pub project_files: FxHashSet<PathBuf>,
+    pub ignored_files: FxHashSet<PathBuf>,
 }
 
 /// A plugin pattern with its resolved base directory
@@ -105,6 +106,7 @@ impl Collector {
     pub fn collect(&self) -> ProjectIndex {
         let mut entry_files = FxHashSet::default();
         let mut project_files = FxHashSet::default();
+        let mut ignored_files = FxHashSet::default();
 
         let mut walker_builder = WalkBuilder::new(&self.cwd);
         walker_builder.hidden(false).git_ignore(true);
@@ -128,12 +130,10 @@ impl Collector {
             let relative = path.strip_prefix(&self.cwd).unwrap_or(path);
             let relative_str = relative.to_string_lossy();
 
-            // Check ignore patterns
-            if Matchers::matches_any(&self.matchers.ignore, &relative_str) {
-                continue;
-            }
+            // Check ignore patterns - track separately instead of skipping
+            let is_ignored = Matchers::matches_any(&self.matchers.ignore, &relative_str);
 
-            // Canonicalize once for both checks
+            // Canonicalize once for all checks
             let canonical = match path.canonicalize() {
                 Ok(c) => c,
                 Err(_) => continue,
@@ -152,15 +152,20 @@ impl Collector {
             let is_plugin_entry = self.check_plugin_patterns(&canonical);
 
             if is_project {
-                project_files.insert(canonical.clone());
+                if is_ignored {
+                    ignored_files.insert(canonical.clone());
+                } else {
+                    project_files.insert(canonical.clone());
+                }
             }
 
-            if is_entry || is_plugin_entry {
+            // Entry files should NOT come from ignored patterns
+            if !is_ignored && (is_entry || is_plugin_entry) {
                 entry_files.insert(canonical);
             }
         }
 
-        ProjectIndex { entry_files, project_files }
+        ProjectIndex { entry_files, project_files, ignored_files }
     }
 
     /// Check if a file matches any plugin pattern
